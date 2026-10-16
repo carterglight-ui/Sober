@@ -12,6 +12,7 @@
       sizeMl: 750,
       abv: 40,
       hoursPerDay: 4,
+      daysPerBottle: 3,
       units: 'metric',
       sound: true,
       goalName: '',
@@ -86,19 +87,25 @@
     }
     const lastSlip = [...slipSet].sort().pop();
     const streak = lastSlip ? daysBetween(lastSlip, today) : span;
-    const bottles = soberDates.length;
+    // one bottle for every `daysPerBottle` sober days (about 3 a week by default)
+    const dpb = Math.max(1, Math.round(s.daysPerBottle) || 1);
+    const soberDays = soberDates.length;
+    const bottleList = [];
+    for (let i = dpb - 1; i < soberDays; i += dpb) bottleList.push({ date: soberDates[i], covers: soberDates.slice(i - dpb + 1, i + 1) });
+    const bottles = bottleList.length;
+    const nextBottleIn = dpb - (soberDays % dpb);
     const liters = bottles * s.sizeMl / 1000;
     const ethanolG = liters * 1000 * (s.abv / 100) * 0.789;
     const calories = ethanolG * 7;
     return {
-      today, span, soberDates, streak, bottles, liters,
+      today, span, soberDates, soberDays, bottleList, nextBottleIn, dpb, streak, bottles, liters,
       gallons: liters / 3.78541,
       stdDrinks: ethanolG / 14,
       calories,
       fatLb: calories / 3500,
       money: bottles * s.price,
-      hours: bottles * s.hoursPerDay,
-      oldBottles: 365 * 3,
+      hours: soberDays * s.hoursPerDay,
+      oldBottles: Math.round((365 * 3) / dpb),
     };
   }
 
@@ -765,7 +772,7 @@
 
       const unitArea = u => u.kind === 'case' ? 3.4 * 0.62 : 1;
       const totalArea = units.reduce((a, u) => a + unitArea(u), 0) * BASE_W * BASE_H;
-      scale = totalArea ? clamp(Math.sqrt((0.36 * W * floorY) / totalArea), 0.24, 1.45) : 1;
+      scale = totalArea ? clamp(Math.sqrt((0.36 * W * floorY) / totalArea), 0.24, 1.2) : 1;
 
       const old = units.filter(u => !u.days.some(d => d.isNew));
       const fresh = units.filter(u => u.days.some(d => d.isNew));
@@ -781,7 +788,7 @@
         drop(u, true);
         if (navigator.vibrate) navigator.vibrate(18);
         const d = u.days[u.days.length - 1];
-        toast(`Day ${d.day}'s bottle just landed on the pile`);
+        toast(`Bottle ${d.n} just landed on the pile`);
       }, freshStart + i * 650));
       built = true;
     }
@@ -893,7 +900,7 @@
 
   function pileList(c) {
     const startNew = Math.min(state.seenBottles, c.bottles);
-    return c.soberDates.map((d, i) => ({ date: d, day: daysBetween(state.settings.startDate, d) + 1, isNew: i >= startNew }));
+    return c.bottleList.map((b, i) => ({ date: b.date, covers: b.covers, n: i + 1, day: daysBetween(state.settings.startDate, b.date) + 1, isNew: i >= startNew }));
   }
 
   function rebuildPile(animateAll = true) {
@@ -912,7 +919,7 @@
     $('#dayCount').textContent = int(c.streak);
     $('#dayWord').textContent = plural(c.streak, 'day');
     $('#subline').textContent = c.streak === 0 ? 'Day one starts now.' : 'One day at a time.';
-    $('#captionMain').textContent = `${int(c.bottles)} ${plural(c.bottles, 'bottle')} you didn't drink`;
+    $('#captionMain').textContent = `${int(c.bottles)} ${plural(c.bottles, 'bottle')} you didn't drink · next one in ${c.nextBottleIn} ${plural(c.nextBottleIn, 'day')}`;
     $('#qsMoney').textContent = money(c.money);
     $('#qsVolume').textContent = volumeText(c, c.liters >= 100 ? 0 : 2);
     $('#basisText').textContent = `Based on ${s.sizeMl} mL at $${s.price} per bottle`;
@@ -946,19 +953,21 @@
   function onTapItem(it) {
     if (it.kind === 'case') {
       const a = it.days[0], b = it.days[it.days.length - 1];
-      openSheet(`<h2>A case of ${it.days.length}</h2><p class="sheet-sub">Days ${a.day}–${b.day} · ${fmtDate(a.date, { month: 'short', day: 'numeric' })} to ${fmtDate(b.date)}</p>
-        <div class="list">${it.days.filter(d => state.journal[d.date]?.text).map(d => entryItem(d.date)).join('') || '<div class="empty">No journal entries in this case.</div>'}</div>`);
+      openSheet(`<h2>A case of ${it.days.length}</h2><p class="sheet-sub">Bottles ${a.n}–${b.n}, days ${a.day}–${b.day} · ${fmtDate(a.date, { month: 'short', day: 'numeric' })} to ${fmtDate(b.date)}</p>
+        <div class="list">${it.days.flatMap(d => d.covers).filter(x => state.journal[x]?.text).map(entryItem).join('') || '<div class="empty">No journal entries in this case.</div>'}</div>`);
       return;
     }
     const d = it.days[0];
-    const e = state.journal[d.date];
+    const covers = d.covers || [d.date];
+    const notes = covers.filter(x => state.journal[x]);
     const drinks = Math.round(state.settings.sizeMl * state.settings.abv / 100 * 0.789 / 14);
+    const range = covers.length > 1 ? `${fmtDate(covers[0], { month: 'short', day: 'numeric' })} – ${fmtDate(covers[covers.length - 1], { month: 'short', day: 'numeric' })}` : fmtDay(d.date);
     openSheet(`
       <div class="bottle-card"><canvas id="bottleMini" width="92" height="184"></canvas>
-        <div><h2>Day ${d.day}</h2><p class="sheet-sub">${fmtDay(d.date)}</p>
+        <div><h2>Bottle ${d.n}</h2><p class="sheet-sub">Earned on day ${d.day} · ${range}</p>
         <p class="small muted" style="margin-top:6px">${money(state.settings.price)} kept · ${drinks} drinks skipped</p></div></div>
-      ${e ? entryItem(d.date) : `<div class="empty">Nothing written for this day yet.</div>`}
-      <button class="btn primary block" style="margin-top:12px" data-action="editEntry" data-date="${d.date}">${e ? 'Edit' : 'Write about'} this day</button>`);
+      ${notes.length ? `<div class="list">${notes.map(entryItem).join('')}</div>` : `<div class="empty">Nothing written for these days yet.</div>`}
+      <button class="btn primary block" style="margin-top:12px" data-action="editEntry" data-date="${d.date}">${state.journal[d.date] ? 'Edit' : 'Write about'} day ${d.day}</button>`);
     const c = $('#bottleMini').getContext('2d');
     c.translate(46, 94);
     drawBottle(c, 52, 140, it.shape, it.gi);
@@ -976,7 +985,7 @@
     const nextMs = MILESTONES.find(m => m > c.streak);
     const oldPct = clamp(c.bottles / c.oldBottles, 0, 1);
     const letters = state.letters.slice().sort((a, b) => a.unlockDay - b.unlockDay);
-    const opts = [7, 14, 30, 60, 90, 180, 365, 730, 1095].filter(d => d > c.bottles);
+    const opts = [7, 14, 30, 60, 90, 180, 365, 730, 1095].filter(d => d > c.soberDays);
 
     $('#screen-progress').innerHTML = `
       <h1 class="page-title">Progress</h1>
@@ -994,17 +1003,17 @@
       <div class="stat-grid">
         <div class="stat"><div class="k">Money kept</div><div class="v num">${money(c.money)}</div><div class="d">${money(s.price)} a bottle</div></div>
         <div class="stat"><div class="k">Whiskey</div><div class="v num">${volumeText(c, 1)}</div><div class="d">${int(c.bottles)} × ${s.sizeMl} mL</div></div>
-        <div class="stat"><div class="k">Standard drinks</div><div class="v num">${int(c.stdDrinks)}</div><div class="d">~${Math.round(c.stdDrinks / Math.max(c.bottles, 1))} a day skipped</div></div>
+        <div class="stat"><div class="k">Standard drinks</div><div class="v num">${int(c.stdDrinks)}</div><div class="d">~${Math.round(c.stdDrinks / Math.max(c.soberDays, 1))} a day skipped</div></div>
         <div class="stat"><div class="k">Calories</div><div class="v num">${compact(c.calories)}</div><div class="d">≈ ${c.fatLb.toFixed(1)} lb of fat</div></div>
         <div class="stat wide"><div class="k">Undoing the drinking years</div><div class="v num">${(oldPct * 100).toFixed(1)}%</div>
           <div class="bar"><i style="width:${oldPct * 100}%"></i></div>
-          <div class="d" style="margin-top:6px">${int(c.bottles)} of ~${int(c.oldBottles)} bottles from 3 years at a bottle a day</div></div>
+          <div class="d" style="margin-top:6px">${int(c.bottles)} of ~${int(c.oldBottles)} bottles from 3 years of drinking</div></div>
       </div>
 
       <div class="section-title">Saving for</div>
       ${goal ? `<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline"><b>${esc(s.goalName || 'My goal')}</b><span class="muted small num">${money(c.money)} / ${money(s.goalAmount)}</span></div>
           <div class="bar" style="height:12px"><i style="width:${goalPct * 100}%"></i></div>
-          <p class="small muted" style="margin-top:8px">${goalPct >= 1 ? 'You did it. Every dollar came from bottles you didn\'t buy. 🎉' : `About ${Math.ceil((s.goalAmount - c.money) / Math.max(s.price, 1))} more sober days to go.`}</p>
+          <p class="small muted" style="margin-top:8px">${goalPct >= 1 ? 'You did it. Every dollar came from bottles you didn\'t buy. 🎉' : `About ${Math.ceil((s.goalAmount - c.money) / Math.max(s.price, 1)) * c.dpb - (c.dpb - c.nextBottleIn)} more sober days to go.`}</p>
           <button class="link small" style="margin-top:8px" data-action="editGoal">Change goal</button></div>`
         : `<button class="card" style="width:100%;text-align:left" data-action="editGoal"><b>Pick something to save for</b><p class="small muted" style="margin-top:4px">A trip, a guitar, a car payment. Every bottle you don't buy goes toward it.</p></button>`}
 
@@ -1026,20 +1035,20 @@
     const c = calc();
     const s = state.settings;
     const letters = state.letters.slice().sort((a, b) => a.unlockDay - b.unlockDay);
-    const opts = [7, 14, 30, 60, 90, 180, 365, 730, 1095].filter(d => d > c.bottles);
+    const opts = [7, 14, 30, 60, 90, 180, 365, 730, 1095].filter(d => d > c.soberDays);
     $('#screen-more').innerHTML = `
       <h1 class="page-title">More</h1>
       <details class="group" id="d-letters">
-        <summary><span class="ico">✉️</span><span class="t"><b>Letters to future you</b><span>${letters.length ? `${letters.filter(l => c.bottles >= l.unlockDay).length} opened · ${letters.filter(l => c.bottles < l.unlockDay).length} sealed` : 'Seal one now, open it at a milestone'}</span></span></summary>
+        <summary><span class="ico">✉️</span><span class="t"><b>Letters to future you</b><span>${letters.length ? `${letters.filter(l => c.soberDays >= l.unlockDay).length} opened · ${letters.filter(l => c.soberDays < l.unlockDay).length} sealed` : 'Seal one now, open it at a milestone'}</span></span></summary>
         <div class="body">
           <div class="list" style="margin-top:0">${letters.map(l => {
-            const open = c.bottles >= l.unlockDay;
-            return `<button class="item letter ${open ? 'open' : ''}" data-action="openLetter" data-id="${l.id}"><span class="env">${open ? '📬' : '🔒'}</span><span class="t"><b>${esc(l.title || 'Letter')}</b><span class="tiny faint">${open ? `Opened at ${l.unlockDay} bottles` : `Opens at ${l.unlockDay} bottles · ${l.unlockDay - c.bottles} days to go`}</span></span></button>`;
+            const open = c.soberDays >= l.unlockDay;
+            return `<button class="item letter ${open ? 'open' : ''}" data-action="openLetter" data-id="${l.id}"><span class="env">${open ? '📬' : '🔒'}</span><span class="t"><b>${esc(l.title || 'Letter')}</b><span class="tiny faint">${open ? `Opened on day ${l.unlockDay}` : `Opens on day ${l.unlockDay} · ${l.unlockDay - c.soberDays} days to go`}</span></span></button>`;
           }).join('')}</div>
           ${opts.length ? `<div style="margin-top:12px">
             <label class="field" style="margin-top:0"><span>Title</span><input id="letterTitle" placeholder="To me, at 90 days"></label>
             <label class="field"><span>Letter</span><textarea id="letterBody" placeholder="What do you want to tell yourself when you get there?"></textarea></label>
-            <label class="field"><span>Open when the pile hits</span><select id="letterDay">${opts.map(d => `<option value="${d}" ${d === 90 ? 'selected' : ''}>${d} bottles</option>`).join('')}</select></label>
+            <label class="field"><span>Open on sober day</span><select id="letterDay">${opts.map(d => `<option value="${d}" ${d === 90 ? 'selected' : ''}>day ${d}</option>`).join('')}</select></label>
             <button class="btn primary block" style="margin-top:12px" data-action="sealLetter">Seal letter</button>
           </div>` : ''}
         </div>
@@ -1235,6 +1244,7 @@
       </div>
       <div class="row2">
         <label class="field"><span>Alcohol (% ABV)</span><input type="number" inputmode="decimal" min="1" max="75" data-setting="abv" value="${s.abv}"></label>
+        <label class="field"><span>Days per bottle</span><input type="number" inputmode="numeric" min="1" max="30" step="1" data-setting="daysPerBottle" value="${s.daysPerBottle}"></label>
         <label class="field"><span>Hours drinking / day</span><input type="number" inputmode="decimal" min="0" max="24" step="0.5" data-setting="hoursPerDay" value="${s.hoursPerDay}"></label>
       </div>
       <label class="field"><span>Volume units</span><select data-setting="units"><option value="metric" ${s.units === 'metric' ? 'selected' : ''}>Liters</option><option value="us" ${s.units === 'us' ? 'selected' : ''}>Gallons</option></select></label>
@@ -1465,11 +1475,11 @@
       const l = state.letters.find(x => x.id === el.dataset.id);
       const c = calc();
       if (!l) return;
-      if (c.bottles < l.unlockDay) {
-        openSheet(`<h2>🔒 Still sealed</h2><p class="sheet-sub">Written ${fmtDate(l.created)}. Opens when your pile hits ${l.unlockDay} bottles, ${l.unlockDay - c.bottles} days from now.</p>
+      if (c.soberDays < l.unlockDay) {
+        openSheet(`<h2>🔒 Still sealed</h2><p class="sheet-sub">Written ${fmtDate(l.created)}. Opens on sober day ${l.unlockDay}, ${l.unlockDay - c.soberDays} days from now.</p>
           <button class="btn ghost danger block" style="margin-top:16px" data-action="delLetter" data-id="${l.id}">Delete letter</button>`);
       } else {
-        openSheet(`<h2>${esc(l.title || 'A letter from you')}</h2><p class="sheet-sub">Written on ${fmtDate(l.created)}, opened at ${l.unlockDay} bottles</p>
+        openSheet(`<h2>${esc(l.title || 'A letter from you')}</h2><p class="sheet-sub">Written on ${fmtDate(l.created)}, opened on day ${l.unlockDay}</p>
           <p style="margin-top:16px;white-space:pre-wrap;font-size:18px;line-height:1.55">${esc(l.body)}</p>
           <button class="btn ghost danger block" style="margin-top:16px" data-action="delLetter" data-id="${l.id}">Delete letter</button>`);
       }
@@ -1536,13 +1546,15 @@
     const key = el.dataset.setting;
     if (!key) return;
     let v = el.type === 'checkbox' ? el.checked : el.value;
-    if (['price', 'abv', 'hoursPerDay', 'sizeMl'].includes(key)) v = parseFloat(v) || 0;
+    if (['price', 'abv', 'hoursPerDay', 'sizeMl', 'daysPerBottle'].includes(key)) v = parseFloat(v) || 0;
     if (key === 'startDate' && (!v || v > todayStr())) { el.value = state.settings.startDate; return; }
     state.settings[key] = typeof v === 'string' ? v.trim() : v;
     if (key === 'startDate') state.seenBottles = 0;
+    if (key === 'daysPerBottle' && v < 1) { el.value = state.settings.daysPerBottle; return; }
     save();
     renderToday();
-    if (key === 'startDate' || key === 'sizeMl') rebuildPile(true);
+    if (key === 'daysPerBottle') state.seenBottles = 0;
+    if (key === 'startDate' || key === 'sizeMl' || key === 'daysPerBottle') rebuildPile(true);
     toast('Saved');
   });
 
