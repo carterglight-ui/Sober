@@ -4,7 +4,7 @@
   /* =========================================================
      State
      ========================================================= */
-  const APP_VERSION = '1.12';
+  const APP_VERSION = '1.13';
   const STORE_KEY = 'soberpile.v1';
   const DEFAULT_STATE = {
     settings: {
@@ -152,7 +152,11 @@
         poly: [[0.068, 0.225], [0.188, 0.093], [0.393, 0.027], [0.620, 0.027], [0.825, 0.103], [0.942, 0.225], [0.935, 0.337], [0.648, 0.489], [0.379, 0.499], [0.075, 0.327]],
       },
     },
-    { id: 'pool', one: 'backyard pool', many: 'backyard pools', L: 50000 },
+    {
+      id: 'pool', one: 'backyard pool', many: 'backyard pools', L: 50000,
+      // open basin seen from above: the whiskey is an ellipse rising from the floor to the rim
+      art: { src: 'assets/c-pool.png', basin: { cx: 0.502, cy: 0.389, rx: 0.471, ry: 0.236, depth: 0.184 } },
+    },
     { id: 'olympic', one: 'Olympic pool', many: 'Olympic pools', L: 2500000 },
   ];
   const SHOT_ML = 50;
@@ -696,7 +700,30 @@
     // a tiny amount still shows as a visible film
     const shown = frac > 0 ? Math.max(frac, 0.025) : 0;
     const lvl = y + h * (art.bottom - (art.bottom - art.top) * shown);
-    if (art.clear) {
+    if (art.basin) {
+      const b = art.basin, d = Math.min(1, shown);
+      const cx = x + b.cx * w, rx = b.rx * w, ry = b.ry * h;
+      const sy = y + (b.cy + b.depth * (1 - d)) * h;
+      const k = 0.93 + 0.07 * d;
+      c.drawImage(img, x, y, w, h);
+      c.save();
+      c.beginPath();
+      c.ellipse(cx, y + b.cy * h, rx, ry, 0, 0, Math.PI * 2);
+      c.clip();
+      const g = c.createRadialGradient(cx, sy, 0, cx, sy, rx * k);
+      g.addColorStop(0, '#d18a30'); g.addColorStop(0.7, '#a55a16'); g.addColorStop(1, '#6e3608');
+      // a thin layer is see-through; it gets richer as it deepens
+      c.globalAlpha = 0.55 + 0.4 * Math.min(1, d * 8);
+      c.fillStyle = g;
+      c.beginPath();
+      c.ellipse(cx, sy, rx * k, ry * k, 0, 0, Math.PI * 2);
+      c.fill();
+      c.globalAlpha = 0.5;
+      c.strokeStyle = 'rgba(255,220,150,0.7)';
+      c.lineWidth = Math.max(1, w * 0.004);
+      c.stroke();
+      c.restore();
+    } else if (art.clear) {
       c.drawImage(img, x, y, w, h);
       c.save();
       c.beginPath();
