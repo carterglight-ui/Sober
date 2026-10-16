@@ -4,7 +4,7 @@
   /* =========================================================
      State
      ========================================================= */
-  const APP_VERSION = '1.7';
+  const APP_VERSION = '1.8';
   const STORE_KEY = 'soberpile.v1';
   const DEFAULT_STATE = {
     settings: {
@@ -529,7 +529,8 @@
   }
 
   // Sunlit plaster wall and a rough stone ledge.
-  function drawScene(c, W, H, fy, dpr) {
+  // Sunlit plaster wall (screen space, stays put while the camera moves).
+  function drawWall(c, W, H, fy) {
     const rnd = seeded(1234);
     let g = c.createLinearGradient(0, 0, W, H);
     g.addColorStop(0, '#d8c6a4');
@@ -579,16 +580,31 @@
     c.fillStyle = g;
     c.fillRect(0, 0, W, fy);
 
+    // fine film grain
+    try {
+      const img = c.getImageData(0, 0, c.canvas.width, c.canvas.height);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const n = (Math.random() - 0.5) * 16;
+        d[i] += n; d[i + 1] += n; d[i + 2] += n;
+      }
+      c.putImageData(img, 0, 0);
+    } catch (e) { /* ignore */ }
+  }
+
+  // Rough stone ledge as a strip that tiles sideways; top edge at y = 0.
+  function drawLedge(c, W, H) {
+    const rnd = seeded(77);
+    let g;
     // stone ledge: top surface, then the rough front face
-    const top = fy, lip = Math.max(16, H * 0.06);
+    const top = 0, lip = Math.max(16, H * 0.3);
     c.beginPath();
     c.moveTo(0, top);
     for (let x = 0; x <= W; x += 6) c.lineTo(x, top + (rnd() - 0.5) * 2);
     c.lineTo(W, H); c.lineTo(0, H); c.closePath();
-    g = c.createLinearGradient(0, 0, W, 0);
-    g.addColorStop(0, '#a8977b');
-    g.addColorStop(0.5, '#8d7c62');
-    g.addColorStop(1, '#5f5241');
+    g = c.createLinearGradient(0, 0, 0, lip);
+    g.addColorStop(0, '#a69479');
+    g.addColorStop(1, '#85745b');
     c.fillStyle = g;
     c.fill();
     // front face, darker, with a chipped upper edge
@@ -621,11 +637,10 @@
     }
     // highlight on the ledge lip
     c.fillStyle = 'rgba(255,240,205,0.25)';
-    c.fillRect(0, top, W * 0.7, 1.5);
+    c.fillRect(0, top, W, 1.5);
 
-    // fine film grain across everything
     try {
-      const img = c.getImageData(0, 0, Math.round(W * dpr), Math.round(H * dpr));
+      const img = c.getImageData(0, 0, c.canvas.width, c.canvas.height);
       const d = img.data;
       for (let i = 0; i < d.length; i += 4) {
         const n = (Math.random() - 0.5) * 16;
@@ -633,9 +648,10 @@
       }
       c.putImageData(img, 0, 0);
     } catch (e) { /* ignore */ }
+  }
 
-    // vignette
-    rg = c.createRadialGradient(W * 0.45, H * 0.45, Math.min(W, H) * 0.35, W * 0.5, H * 0.5, Math.max(W, H) * 0.8);
+  function drawVignette(c, W, H) {
+    const rg = c.createRadialGradient(W * 0.45, H * 0.45, Math.min(W, H) * 0.35, W * 0.5, H * 0.5, Math.max(W, H) * 0.8);
     rg.addColorStop(0, 'rgba(20,12,4,0)');
     rg.addColorStop(1, 'rgba(20,12,4,0.42)');
     c.fillStyle = rg;
@@ -697,12 +713,22 @@
 
   /* =========================================================
      The pile (Matter.js physics)
+     Bottles keep one size. As the pile grows the world grows
+     with it; the camera follows the top of the pile, and the
+     viewer can zoom out to see all of it.
      ========================================================= */
   const Pile = (() => {
     const M = window.Matter;
-    const BASE_W = 38, BASE_H = 100, MAX_LOOSE = 140, CASE_SIZE = 12, FLOOR = 0.8;
-    let engine, runner, canvas, ctx, W = 0, H = 0, floorY = 0, dpr = 1, walls = [], items = [], gen = 0;
-    let running = false, lastClink = 0, scale = 1, built = false, scene = null, down = null, view = 'bottles', liquidPct = 0;
+    const BASE_W = 38, BASE_H = 100, MAX_LOOSE = 300, CASE_SIZE = 12, FLOOR = 0.8, SCALE = 1.25;
+    let engine, runner, canvas, ctx, mouse, W = 0, H = 0, floorY = 0, dpr = 1, walls = [], items = [], gen = 0;
+    let running = false, lastClink = 0, scale = SCALE, built = false, down = null, view = 'bottles', liquidPct = 0;
+    let wallCv = null, ledgeCv = null, vigCv = null;
+    // world size and camera
+    let worldW = 0, worldFloor = 0, mound = 0, shrink = 0, zMin = 1, zoom = 1, zoomTarget = 1, snap = true;
+    const cam = { x: 0, y: 0 }, peak = { x: 0, y: 0 };
+    let pinch = null;
+
+    const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
 
     function init(c) {
       canvas = c;
@@ -710,7 +736,7 @@
       engine = M.Engine.create({ enableSleeping: true });
       engine.gravity.y = 1.1;
       runner = M.Runner.create();
-      const mouse = M.Mouse.create(canvas);
+      mouse = M.Mouse.create(canvas);
       ['mousewheel', 'DOMMouseScroll', 'wheel'].forEach(ev => canvas.removeEventListener(ev, mouse.mousewheel));
       const mc = M.MouseConstraint.create(engine, { mouse, constraint: { stiffness: 0.15, damping: 0.1, render: { visible: false } } });
       M.Composite.add(engine.world, mc);
@@ -718,11 +744,11 @@
 
       canvas.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, t: Date.now() }; });
       canvas.addEventListener('pointerup', e => {
-        if (!down || view !== 'bottles') return;
+        if (!down || view !== 'bottles' || pinch) { down = null; return; }
         const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
         if (moved < 8 && Date.now() - down.t < 400) {
           const r = canvas.getBoundingClientRect();
-          const pt = { x: e.clientX - r.left, y: e.clientY - r.top };
+          const pt = { x: (e.clientX - r.left) / zoom + cam.x, y: (e.clientY - r.top) / zoom + cam.y };
           const hits = M.Query.point(items.map(i => i.body), pt);
           if (hits.length) {
             const it = items.find(i => i.body === hits[hits.length - 1]);
@@ -731,6 +757,12 @@
         }
         down = null;
       });
+      // two-finger pinch zooms between close-up and the whole pile
+      canvas.addEventListener('touchstart', e => { if (e.touches.length === 2) pinch = { d: dist(e.touches), z: zoomTarget }; }, { passive: true });
+      canvas.addEventListener('touchmove', e => {
+        if (pinch && e.touches.length === 2) { zoomTarget = clamp(pinch.z * dist(e.touches) / pinch.d, zMin, 1); updateZoomBtn(); }
+      }, { passive: true });
+      canvas.addEventListener('touchend', e => { if (e.touches.length < 2) setTimeout(() => { pinch = null; }, 50); }, { passive: true });
     }
 
     function onCollide(ev) {
@@ -748,6 +780,16 @@
       }
     }
 
+    function offscreen(w, h, paint) {
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(w * dpr));
+      cv.height = Math.max(1, Math.round(h * dpr));
+      const c = cv.getContext('2d');
+      c.scale(dpr, dpr);
+      paint(c);
+      return cv;
+    }
+
     function measure() {
       const r = canvas.getBoundingClientRect();
       dpr = Math.min(window.devicePixelRatio || 1, 2.5);
@@ -758,37 +800,46 @@
       canvas.pixelRatio = dpr;
       Sprites.clear();
       if (W > 10 && H > 10) {
-        scene = document.createElement('canvas');
-        scene.width = canvas.width;
-        scene.height = canvas.height;
-        const sc = scene.getContext('2d');
-        sc.scale(dpr, dpr);
-        drawScene(sc, W, H, floorY, dpr);
+        wallCv = offscreen(W, H, c => drawWall(c, W, H, floorY));
+        ledgeCv = offscreen(W, H - floorY, c => drawLedge(c, W, H - floorY));
+        vigCv = offscreen(W, H, c => drawVignette(c, W, H));
       }
     }
 
     function makeWalls() {
       M.Composite.remove(engine.world, walls);
-      const t = 200, opts = { isStatic: true, friction: 0.9, restitution: 0.1 };
+      const t = 400, tall = worldFloor * 6 + H * 4, opts = { isStatic: true, friction: 0.9, restitution: 0.1 };
       walls = [
-        M.Bodies.rectangle(W / 2, floorY + t / 2, W * 3, t, opts),
-        M.Bodies.rectangle(-t / 2, floorY - H * 2, t, H * 4, opts),
-        M.Bodies.rectangle(W + t / 2, floorY - H * 2, t, H * 4, opts),
+        M.Bodies.rectangle(worldW / 2, worldFloor + t / 2, worldW * 3, t, opts),
+        M.Bodies.rectangle(-t / 2, worldFloor - tall / 2, t, tall, opts),
+        M.Bodies.rectangle(worldW + t / 2, worldFloor - tall / 2, t, tall, opts),
       ];
       M.Composite.add(engine.world, walls);
     }
 
-    // list: [{ date, day, isNew }] oldest first
+    function unitLook(u) {
+      const isCase = u.kind === 'case';
+      const day = u.days[u.days.length - 1];
+      const hash = Math.imul(day.day + 7, 2654435761) >>> 0;
+      let shape = SHAPE_KEYS[hash % SHAPE_KEYS.length];
+      const roll = (hash >>> 5) % 10;
+      const gi = roll < 7 ? roll % 3 : roll === 7 || roll === 8 ? 3 : 4;
+      if (gi === 3 && shape === 'square') shape = 'tall';
+      const kind = isCase ? 'case' : photoReady() ? 'photo' : 'bottle';
+      const [dw, dh] = isCase ? [3.4, 0.62] : kind === 'photo' ? [(1.05 * BASE_H * PHOTO_RATIO) / BASE_W, 1.05] : BOTTLE_SHAPES[shape].dims;
+      return { kind, shape, gi, hash, w: BASE_W * dw * scale, h: BASE_H * dh * scale };
+    }
+
+    // list: [{ date, day, n, covers, isNew }] oldest first
     function build(list, { animateAll = true } = {}) {
       gen++;
       const myGen = gen;
       measure();
       if (W < 10 || H < 10) return;
-      makeWalls();
       M.Composite.remove(engine.world, items.map(i => i.body));
       items = [];
 
-      // group older bottles into crates once the pile gets big
+      // pack the oldest bottles into crates of 12 once the pile is huge
       const units = [];
       if (list.length > MAX_LOOSE) {
         const caseable = list.length - (CASE_SIZE + (list.length % CASE_SIZE));
@@ -797,20 +848,36 @@
       } else {
         list.forEach(d => units.push({ kind: 'bottle', days: [d] }));
       }
+      units.forEach(u => { u.look = unitLook(u); });
 
-      const unitArea = u => u.kind === 'case' ? 3.4 * 0.62 : 1;
-      const totalArea = units.reduce((a, u) => a + unitArea(u), 0) * BASE_W * BASE_H;
-      scale = totalArea ? clamp(Math.sqrt((0.36 * W * floorY) / totalArea), 0.24, 1.5) : 1;
+      // size the world so the pile fits as a mound: lying bottles, rows narrowing by SLOPE bottle-lengths
+      const bl = unitLook({ kind: 'bottle', days: [{ day: 1 }] });
+      const area = units.reduce((a, u) => a + (u.kind === 'case' ? u.look.w * u.look.h : bl.w * bl.h) * 1.15, 0);
+      // the close-up shows a small pile whole; the world only grows once the pile outgrows the view
+      const grow = Math.sqrt(area / (W * floorY * 0.25));
+      worldW = grow > 1.3 ? W * grow : W;
+      mound = worldW * 0.92;
+      // how much narrower each row is than the one below, so the rows hold every bottle
+      shrink = clamp((mound * mound * bl.w) / (2 * area), bl.h * 0.3, bl.h * 2.5);
+      const k = worldW / W;
+      worldFloor = floorY * k;
+      zMin = 1 / k;
+      zoom = zoomTarget = 1;
+      snap = true;
+      makeWalls();
 
-      const old = units.filter(u => !u.days.some(d => d.isNew));
       const fresh = units.filter(u => u.days.some(d => d.isNew));
-      const stagger = old.length ? clamp(1600 / old.length, 8, 90) : 0;
+      const old = units.filter(u => !u.days.some(d => d.isNew));
+      // a small pile drops in on first open; a big one is laid down and only the top few fall
+      const dropOld = animateAll ? (old.length <= 30 ? old.length : 10) : 0;
+      const placed = old.slice(0, old.length - dropOld);
+      const falling = old.slice(old.length - dropOld);
+      placeMound(placed);
+      if (!placed.length) { peak.x = worldW / 2; peak.y = worldFloor; }
 
-      old.forEach((u, i) => {
-        if (animateAll) setTimeout(() => myGen === gen && drop(u, false), i * stagger);
-        else drop(u, false, true);
-      });
-      const freshStart = animateAll ? old.length * stagger + 700 : 400;
+      const stagger = falling.length ? clamp(1600 / falling.length, 30, 110) : 0;
+      falling.forEach((u, i) => setTimeout(() => myGen === gen && drop(u, false), 150 + i * stagger));
+      const freshStart = falling.length ? 150 + falling.length * stagger + 600 : 500;
       fresh.forEach((u, i) => setTimeout(() => {
         if (myGen !== gen) return;
         drop(u, true);
@@ -819,26 +886,54 @@
         toast(`Bottle ${d.n} just landed on the pile`);
       }, freshStart + i * 650));
       built = true;
+      updateZoomBtn();
     }
 
-    function drop(u, isFresh, settled) {
-      const isCase = u.kind === 'case';
-      const day = u.days[u.days.length - 1];
-      const hash = Math.imul(day.day + 7, 2654435761) >>> 0;
-      let shape = SHAPE_KEYS[hash % SHAPE_KEYS.length];
-      // mostly amber whiskey, with the odd green or brown glass bottle
-      const roll = (hash >>> 5) % 10;
-      const gi = roll < 7 ? roll % 3 : roll === 7 || roll === 8 ? 3 : 4;
-      if (gi === 3 && shape === 'square') shape = 'tall';
-      const kind = isCase ? 'case' : photoReady() ? 'photo' : 'bottle';
-      const [dw, dh] = isCase ? [3.4, 0.62] : kind === 'photo' ? [(1.05 * BASE_H * PHOTO_RATIO) / BASE_W, 1.05] : BOTTLE_SHAPES[shape].dims;
-      const w = BASE_W * dw * scale;
-      const h = BASE_H * dh * scale;
-      // bias drops toward the middle so the bottles heap into a mound
-      const spread = (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
-      const x = clamp(W / 2 + spread * W * 0.34, w / 2 + 4, W - w / 2 - 4);
-      const y = settled ? floorY - h - Math.random() * floorY * 0.4 : -h - Math.random() * 60;
-      const opts = { restitution: 0.15, friction: 0.6, frictionStatic: 0.9, frictionAir: 0.004, density: isCase ? 0.004 : 0.002 };
+    // lay bottles on their sides in rows, crates at the bottom, narrowing toward the top
+    function placeMound(units) {
+      if (!units.length) return;
+      const sorted = units.filter(u => u.kind === 'case').concat(units.filter(u => u.kind !== 'case'));
+      const rnd = seeded(sorted.length * 31 + 7);
+      const step = sorted.find(u => u.kind !== 'case')?.look.h || sorted[0].look.w;
+      const base = mound;
+      let row = 0, used = 0, rowH = 0, y = worldFloor, rowW = base;
+      let rowItems = [];
+      const flush = () => {
+        // centre each row on the pile
+        const shift = (rowW - used) / 2;
+        rowItems.forEach(p => add(p.u, { x: p.x + shift, y: y - rowH / 2, angle: p.angle }));
+        y -= rowH * 0.97;
+        row++;
+        rowW = Math.max(step * 1.05, base - row * shrink);
+        used = 0; rowH = 0; rowItems = [];
+      };
+      for (const u of sorted) {
+        const lying = u.kind !== 'case';
+        const fw = (lying ? u.look.h : u.look.w) * 1.04, fh = lying ? u.look.w : u.look.h;
+        if (used > 0 && used + fw > rowW) flush();
+        rowItems.push({ u, x: worldW / 2 - rowW / 2 + used + fw / 2, angle: lying ? (rnd() < 0.5 ? 1 : -1) * Math.PI / 2 + (rnd() - 0.5) * 0.2 : (rnd() - 0.5) * 0.06 });
+        used += fw;
+        rowH = Math.max(rowH, fh);
+      }
+      if (rowItems.length) flush();
+      const top = items.reduce((m, it) => (it.body.bounds.min.y < m.body.bounds.min.y ? it : m), items[0]);
+      peak.x = top.body.position.x;
+      peak.y = top.body.bounds.min.y;
+    }
+
+    // create a body; `at` places it (geometric centre), otherwise it falls in from the top of the view
+    function add(u, at, isFresh) {
+      const { kind, shape, gi, hash, w, h } = u.look;
+      let x, y, angle;
+      if (at) ({ x, y, angle } = at);
+      else {
+        const Vw = W / zoom;
+        const spread = (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
+        x = clamp(peak.x + spread * Math.min(Vw, mound || W) * 0.32, w / 2 + 6, worldW - w / 2 - 6);
+        y = cam.y - h - Math.random() * 60;
+        angle = (Math.random() - 0.5) * (kind === 'case' ? 0.4 : 1.6);
+      }
+      const opts = { restitution: 0.15, friction: 0.6, frictionStatic: 0.9, frictionAir: 0.004, density: kind === 'case' ? 0.004 : 0.002 };
       let body, off = { x: 0, y: 0 };
       if (kind === 'photo') {
         // compound outline that follows the photo: square body, shoulders, neck
@@ -852,49 +947,108 @@
         });
         off = { x: x - body.position.x, y: y - body.position.y };
       } else {
-        body = M.Bodies.rectangle(x, y, w, h, { ...opts, chamfer: { radius: isCase ? 3 : [w * 0.3, w * 0.3, w * 0.12, w * 0.12] } });
+        body = M.Bodies.rectangle(x, y, w, h, { ...opts, chamfer: { radius: kind === 'case' ? 3 : [w * 0.3, w * 0.3, w * 0.12, w * 0.12] } });
       }
-      M.Body.setAngle(body, (Math.random() - 0.5) * (isCase ? 0.4 : 1.6));
-      M.Body.setVelocity(body, { x: (Math.random() - 0.5) * 2, y: isFresh ? 4 : 2 });
-      M.Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.15);
-      items.push({
-        body, w, h, kind, off, days: u.days, shape, gi, seed: hash,
-        glowUntil: isFresh ? performance.now() + 4000 : 0,
-      });
+      M.Body.setAngle(body, angle);
+      // keep the picture's centre where we asked for it after rotating around the centre of mass
+      const ca = Math.cos(angle), sa = Math.sin(angle);
+      M.Body.setPosition(body, { x: x - (off.x * ca - off.y * sa), y: y - (off.x * sa + off.y * ca) });
+      if (at) M.Sleeping.set(body, false);
+      else {
+        M.Body.setVelocity(body, { x: (Math.random() - 0.5) * 2, y: isFresh ? 4 : 2 });
+        M.Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.15);
+      }
+      items.push({ body, w, h, kind, off, days: u.days, shape, gi, seed: hash, glowUntil: isFresh ? performance.now() + 4000 : 0 });
       M.Composite.add(engine.world, body);
+    }
+
+    function drop(u, isFresh) { add(u, null, isFresh); }
+
+    function updateCamera() {
+      const k = snap ? 1 : 0.12;
+      zoom += (zoomTarget - zoom) * k;
+      if (Math.abs(zoomTarget - zoom) < 0.001) zoom = zoomTarget;
+      // track the top of the settled pile
+      let best = null;
+      for (const it of items) {
+        const b = it.body;
+        if (b.speed > 2.5) continue;
+        if (!best || b.bounds.min.y < best.bounds.min.y) best = b;
+      }
+      if (best) {
+        const f = snap ? 1 : 0.06;
+        peak.x += (best.position.x - peak.x) * f;
+        peak.y += (best.bounds.min.y - peak.y) * f;
+      }
+      const Vw = W / zoom, Vh = H / zoom;
+      const t = zMin < 0.999 ? clamp((1 - zoom) / (1 - zMin), 0, 1) : 0;
+      // close-up: the top of the pile sits about a third of the way down; zoomed out: the whole pile
+      const fx = peak.x, fyc = peak.y + Vh * 0.12;
+      const wx = worldW / 2, wyc = worldFloor - FLOOR * Vh + Vh / 2;
+      const cx = fx + (wx - fx) * t, cy = fyc + (wyc - fyc) * t;
+      let x = cx - Vw / 2, y = cy - Vh / 2;
+      x = Vw >= worldW ? (worldW - Vw) / 2 : clamp(x, 0, worldW - Vw);
+      y = Math.min(y, worldFloor - FLOOR * Vh);
+      const m = snap ? 1 : 0.1;
+      cam.x += (x - cam.x) * m;
+      cam.y += (y - cam.y) * m;
+      snap = false;
+      mouse.scale.x = mouse.scale.y = 1 / zoom;
+      mouse.offset.x = cam.x;
+      mouse.offset.y = cam.y;
+    }
+
+    function drawLedgeAt(y, z, offX) {
+      if (!ledgeCv) return;
+      if (y > H) return;
+      // tile sideways with the zoom; stretch down to the bottom so there's never a gap under the ledge
+      const tw = W * z, th = Math.max((H - floorY) * z, H - y);
+      let x0 = -(((offX % tw) + tw) % tw);
+      for (let x = x0; x < W; x += tw) ctx.drawImage(ledgeCv, x, y, tw + 0.5, th);
     }
 
     function frame() {
       if (!running) return;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      if (scene) ctx.drawImage(scene, 0, 0);
+      if (wallCv) ctx.drawImage(wallCv, 0, 0);
       else ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (view === 'liquid') {
+        drawLedgeAt(floorY, 1, 0);
         drawJar(ctx, W, H, floorY, liquidPct);
+        if (vigCv) ctx.drawImage(vigCv, 0, 0, W, H);
         requestAnimationFrame(frame);
         return;
       }
+      updateCamera();
+      drawLedgeAt((worldFloor - cam.y) * zoom, zoom, cam.x * zoom);
+
+      ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, -cam.x * zoom * dpr, -cam.y * zoom * dpr);
+      const Vw = W / zoom, Vh = H / zoom, pad = 120;
+      const visible = b => b.bounds.max.x > cam.x - pad && b.bounds.min.x < cam.x + Vw + pad && b.bounds.max.y > cam.y - pad && b.bounds.min.y < cam.y + Vh + pad;
       // contact shadow under the heap
       if (items.length) {
-        const rg = ctx.createRadialGradient(W / 2, floorY, 0, W / 2, floorY, W * 0.42);
+        const rw = Math.max(mound, W * 0.84) * 0.55;
+        const rg = ctx.createRadialGradient(worldW / 2, worldFloor, 0, worldW / 2, worldFloor, rw);
         rg.addColorStop(0, 'rgba(25,14,4,0.45)');
         rg.addColorStop(1, 'rgba(25,14,4,0)');
         ctx.save();
+        ctx.translate(0, worldFloor);
         ctx.scale(1, 0.12);
+        ctx.translate(0, -worldFloor);
         ctx.fillStyle = rg;
-        ctx.fillRect(0, (floorY - W * 0.42) / 0.12, W, W * 0.84 / 0.12);
+        ctx.fillRect(worldW / 2 - rw, worldFloor - rw, rw * 2, rw * 2);
         ctx.restore();
       }
       const now = performance.now();
       // shadow pass: one consistent light direction, whatever the bottle's rotation
       for (const it of items) {
         const b = it.body;
-        if (b.position.y > H + 400) continue;
-        const lift = clamp((floorY - b.position.y) / H, 0, 1);
+        if (!visible(b)) continue;
+        const lift = clamp((worldFloor - b.position.y) / (H * 1.5), 0, 1);
         ctx.save();
-        ctx.globalAlpha = 1 - lift * 0.6;
-        ctx.translate(b.position.x + LIGHT.x * scale * (1 + lift * 2), b.position.y + LIGHT.y * scale * (1 + lift));
+        ctx.globalAlpha = 1 - lift * 0.5;
+        ctx.translate(b.position.x + LIGHT.x * scale, b.position.y + LIGHT.y * scale);
         ctx.rotate(b.angle);
         ctx.translate(it.off.x, it.off.y);
         drawSprite(ctx, Sprites.shadow(it.kind, it.shape, it.w, it.h, dpr), dpr);
@@ -902,7 +1056,7 @@
       }
       for (const it of items) {
         const b = it.body;
-        if (b.position.y > H + 400) continue;
+        if (!visible(b)) continue;
         ctx.save();
         ctx.translate(b.position.x, b.position.y);
         ctx.rotate(b.angle);
@@ -917,6 +1071,8 @@
         drawSprite(ctx, sp, dpr);
         ctx.restore();
       }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (vigCv) ctx.drawImage(vigCv, 0, 0, W, H);
       requestAnimationFrame(frame);
     }
 
@@ -930,10 +1086,21 @@
       running = false;
       M.Runner.stop(runner);
     }
-    function setView(v, pct = 0) { view = v; liquidPct = pct; }
+    function setView(v, pct = 0) { view = v; liquidPct = pct; updateZoomBtn(); }
+    function toggleZoom() { zoomTarget = zoomTarget < 0.999 ? 1 : zMin; updateZoomBtn(); }
+    const zoomInfo = () => ({ canZoom: zMin < 0.95 && view === 'bottles', out: zoomTarget < 0.999 });
     const size = () => ({ W, H });
-    return { init, build, start, stop, size, setView, isBuilt: () => built };
+    return { init, build, start, stop, size, setView, toggleZoom, zoomInfo, isBuilt: () => built };
   })();
+
+  function updateZoomBtn() {
+    const btn = document.getElementById('zoomBtn');
+    if (!btn || typeof Pile === 'undefined') return;
+    const z = Pile.zoomInfo();
+    btn.hidden = !z.canZoom;
+    btn.querySelector('span').textContent = z.out ? 'Back to the top' : 'See the whole pile';
+    btn.classList.toggle('out', z.out);
+  }
 
   /* =========================================================
      Today screen
@@ -1473,6 +1640,7 @@
   const actions = {
     tab: el => showTab(el.dataset.tab),
     view: el => setPileView(el.dataset.view),
+    zoomPile: () => Pile.toggleZoom(),
     liquidPick: el => { liquidPick = el.dataset.id; renderLiquid(); },
     settings: () => openSheet(settingsHTML(), 'settings'),
     checkin: () => actions.editEntry({ dataset: { date: todayStr() } }),
