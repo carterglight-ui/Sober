@@ -116,14 +116,25 @@
   const MILESTONES = [1, 3, 7, 14, 30, 60, 90, 180, 365, 500, 730, 1000, 1095, 1461];
   const milestoneName = d => d % 365 === 0 ? `${d / 365} ${plural(d / 365, 'year')}` : `${d} days`;
 
+  // Containers to compare the whiskey against, smallest to largest. L = liters.
   const LIQUIDS = [
-    { name: 'a kitchen pot', L: 7.6, icon: '🍲' },
-    { name: 'a 5-gallon bucket', L: 18.9, icon: '🪣' },
-    { name: 'a beer keg', L: 58.7, icon: '🛢️' },
-    { name: 'a bathtub', L: 150, icon: '🛁' },
-    { name: 'an oil drum', L: 208, icon: '🛢️' },
-    { name: 'a hot tub', L: 1500, icon: '♨️' },
+    { id: 'shot', one: 'shot', many: 'shots', L: 0.05 },
+    { id: 'can', one: 'beer can', many: 'beer cans', L: 0.355 },
+    { id: 'milk', one: 'milk carton', many: 'milk cartons', L: 1.89, note: 'half gallon' },
+    { id: 'soda', one: '2-liter soda', many: '2-liter sodas', L: 2 },
+    { id: 'jug', one: 'gallon jug', many: 'gallon jugs', L: 3.785 },
+    { id: 'pot', one: 'kitchen pot', many: 'kitchen pots', L: 7.6 },
+    { id: 'bucket', one: '5-gallon bucket', many: '5-gallon buckets', L: 18.9 },
+    { id: 'gas', one: 'car gas tank', many: 'car gas tanks', L: 55 },
+    { id: 'keg', one: 'beer keg', many: 'beer kegs', L: 58.7 },
+    { id: 'tank', one: 'fish tank', many: 'fish tanks', L: 75.7, note: '20 gallon' },
+    { id: 'bathtub', one: 'bathtub', many: 'bathtubs', L: 150 },
+    { id: 'drum', one: 'oil drum', many: 'oil drums', L: 208 },
+    { id: 'hottub', one: 'hot tub', many: 'hot tubs', L: 1500 },
+    { id: 'pool', one: 'backyard pool', many: 'backyard pools', L: 50000 },
+    { id: 'olympic', one: 'Olympic pool', many: 'Olympic pools', L: 2500000 },
   ];
+  const SHOT_ML = 50;
 
   const TIMELINE = [
     { day: 1, when: 'Days 1–3', title: 'The hardest part', text: 'Withdrawal from heavy daily drinking peaks in the first few days and can be dangerous. You got through it.' },
@@ -632,7 +643,7 @@
 
   // A big glass jar on the ledge, filled to pct, for the liquid view.
   function drawJar(c, W, H, fy, pct) {
-    const jh = Math.max(60, fy - H * 0.44), jw = Math.min(W * 0.5, 220, jh * 0.85);
+    const jh = Math.max(60, fy - H * 0.5), jw = Math.min(W * 0.5, 220, jh * 0.85);
     const x = W / 2 - jw / 2, y = fy - jh, r = jw * 0.12;
     // cast shadow
     c.save();
@@ -963,15 +974,29 @@
     if (pileView === 'liquid') renderLiquid();
   }
 
+  let liquidPick = null;   // container the viewer tapped; null = the next one to fill
+
+  function liquidCompare(liters, l) {
+    const r = liters / l.L;
+    const n = r >= 100 ? int(r) : r >= 10 ? r.toFixed(0) : r.toFixed(1).replace(/\.0$/, '');
+    if (r >= 1) return { big: `${n} ${r === 1 ? l.one : l.many}`, pct: 1 };
+    const pct = r * 100;
+    const p = pct < 1 ? String(Number(pct.toPrecision(2))) : pct < 10 ? pct.toFixed(1) : Math.round(pct);
+    return { big: `${p}% of ${/^[aeiouAEIOU]/.test(l.one) ? 'an' : 'a'} ${l.one}`, pct: r };
+  }
+
   function renderLiquid() {
     const c = calc();
-    const next = LIQUIDS.find(l => l.L > c.liters) || LIQUIDS[LIQUIDS.length - 1];
-    const pct = clamp(c.liters / next.L, 0, 1);
-    Pile.setView('liquid', pct);
+    const auto = LIQUIDS.find(l => l.L > c.liters && l.L >= 7) || LIQUIDS[LIQUIDS.length - 1];
+    const pick = LIQUIDS.find(l => l.id === liquidPick) || auto;
+    const cmp = liquidCompare(c.liters, pick);
+    Pile.setView('liquid', cmp.pct);
     $('#liquidView').innerHTML = `
-      <div class="big">${volumeText(c)}</div>
-      <div class="sub">${Math.round(pct * 100)}% of ${next.name}</div>
-      <div class="liquid-list">${LIQUIDS.map(l => `<span class="${c.liters >= l.L ? 'done' : ''}">${c.liters >= l.L ? '✓ ' : ''}${l.name.replace(/^an? /, '')}</span>`).join('')}</div>`;
+      <div class="big">${cmp.big}</div>
+      <div class="sub">${volumeText(c)} of whiskey${pick.note ? ` · ${pick.note} ${pick.one}` : ''}</div>
+      <div class="liquid-list" role="tablist" aria-label="Compare to">${LIQUIDS.map(l => `<button type="button" class="${l === pick ? 'on' : ''} ${c.liters >= l.L ? 'done' : ''}" data-action="liquidPick" data-id="${l.id}">${l.one}</button>`).join('')}</div>`;
+    const on = $('#liquidView .liquid-list .on');
+    if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
   }
 
   function setPileView(v) {
@@ -1036,7 +1061,8 @@
         <div class="stat"><div class="k">Money kept</div><div class="v num">${money(c.money)}</div><div class="d">${money(s.price)} a bottle</div></div>
         <div class="stat"><div class="k">Whiskey</div><div class="v num">${volumeText(c, 1)}</div><div class="d">${int(c.bottles)} × ${s.sizeMl} mL</div></div>
         <div class="stat"><div class="k">Standard drinks</div><div class="v num">${int(c.stdDrinks)}</div><div class="d">~${Math.round(c.stdDrinks / Math.max(c.soberDays, 1))} a day skipped</div></div>
-        <div class="stat"><div class="k">Calories</div><div class="v num">${compact(c.calories)}</div><div class="d">≈ ${c.fatLb.toFixed(1)} lb of fat</div></div>
+        <div class="stat"><div class="k">Shots</div><div class="v num">${int((c.liters * 1000) / SHOT_ML)}</div><div class="d">${SHOT_ML} mL each · ~${Math.round((c.liters * 1000) / SHOT_ML / Math.max(c.soberDays, 1))} a day</div></div>
+        <div class="stat wide"><div class="k">Calories</div><div class="v num">${compact(c.calories)}</div><div class="d">≈ ${c.fatLb.toFixed(1)} lb of fat</div></div>
         <div class="stat wide"><div class="k">Undoing the drinking years</div><div class="v num">${(oldPct * 100).toFixed(1)}%</div>
           <div class="bar"><i style="width:${oldPct * 100}%"></i></div>
           <div class="d" style="margin-top:6px">${int(c.bottles)} of ~${int(c.oldBottles)} bottles from 3 years of drinking</div></div>
@@ -1446,6 +1472,7 @@
   const actions = {
     tab: el => showTab(el.dataset.tab),
     view: el => setPileView(el.dataset.view),
+    liquidPick: el => { liquidPick = el.dataset.id; renderLiquid(); },
     settings: () => openSheet(settingsHTML(), 'settings'),
     checkin: () => actions.editEntry({ dataset: { date: todayStr() } }),
     craving: () => openCraving(),

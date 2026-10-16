@@ -63,11 +63,14 @@ svg { display: block; }
 .stage-caption { text-align: center; font-size: 15.5px; color: var(--muted); padding: 9px 12px 8px; }
 
 .liquid-view { position: absolute; left: 0; right: 0; top: 58px; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 0 18px; pointer-events: none; }
-.liquid-view .big { font-family: var(--serif); font-size: 30px; font-weight: 600; color: #fff8ec; text-shadow: 0 2px 12px rgba(40,22,6,.5); }
+.liquid-view .big { font-family: var(--serif); font-size: clamp(22px, 6.6vw, 30px); line-height: 1.12; text-wrap: balance; font-weight: 600; color: #fff8ec; text-shadow: 0 2px 12px rgba(40,22,6,.5); }
 .liquid-view .sub { color: #fff3dd; font-size: 15px; text-shadow: 0 1px 8px rgba(40,22,6,.6); }
-.liquid-list { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; margin-top: 8px; }
-.liquid-list span { font-size: 12px; padding: 2px 9px; border-radius: 99px; background: rgba(245,238,226,.75); color: var(--muted); }
-.liquid-list span.done { background: var(--olive); color: #fff; }
+.liquid-list { align-self: stretch; display: flex; gap: 6px; margin-top: 12px; max-width: 100%; overflow-x: auto; padding: 2px 4px 6px; pointer-events: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.liquid-list::-webkit-scrollbar { display: none; }
+.liquid-list button { flex: none; font-size: 13.5px; padding: 6px 12px; border-radius: 99px; background: rgba(245,238,226,.85); color: var(--text); box-shadow: 0 1px 4px rgba(40,22,6,.18); }
+.liquid-list button.done { background: rgba(227,230,211,.92); }
+.liquid-list button.on { background: var(--olive); color: #fff; }
+.liquid-list button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 .stats-row { display: grid; grid-template-columns: 1fr 1fr; margin-top: 22px; }
 .stats-row > div { text-align: center; padding: 0 6px; }
