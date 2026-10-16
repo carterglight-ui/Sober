@@ -14,7 +14,6 @@
       hoursPerDay: 4,
       units: 'metric',
       sound: true,
-      hands: true,
       goalName: '',
       goalAmount: 0,
       supportName: '',
@@ -171,11 +170,18 @@
   }
 
   /* =========================================================
-     Drawing: hand-drawn bottles, cases, hands, bar scene
+     Drawing: glass bottles, cases, display case
      ========================================================= */
-  const INK = '#3b2614';
+  const TINTS = [
+    { body: '#87ad92', dark: '#3f5f4a', light: '#d5ebdb', alpha: 0.93, cap: 'cork' },   // sage
+    { body: '#dde3db', dark: '#97a198', light: '#ffffff', alpha: 0.9, cap: 'cork' },    // frosted
+    { body: '#b9cfc3', dark: '#6f8b7e', light: '#f3fbf6', alpha: 0.74, cap: 'green' },  // clear
+    { body: '#557f63', dark: '#263f2f', light: '#a4cdb0', alpha: 0.95, cap: 'green' },  // deep green
+  ];
+  const SHAPES = ['gin', 'flask', 'tall', 'ribbed'];
 
   function roundRect(c, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
     c.beginPath();
     c.moveTo(x + r, y);
     c.arcTo(x + w, y, x + w, y + h, r);
@@ -185,116 +191,146 @@
     c.closePath();
   }
 
-  function bottlePath(c, w, h, style) {
+  function shapeOf(shape) {
+    return {
+      gin: { neckW: 0.36, neckH: 0.24, shoulder: 0.06, r: 0.12, square: true },
+      flask: { neckW: 0.34, neckH: 0.18, shoulder: 0.16, r: 0.3, square: false },
+      tall: { neckW: 0.26, neckH: 0.34, shoulder: 0.14, r: 0.16, square: false },
+      ribbed: { neckW: 0.36, neckH: 0.22, shoulder: 0.1, r: 0.18, square: true },
+    }[shape];
+  }
+
+  function bottlePath(c, w, h, sh) {
     const top = -h / 2, bot = h / 2;
-    const neckW = w * (style === 'square' ? 0.34 : 0.3);
-    const neckH = h * 0.28;
-    const shoulder = h * (style === 'square' ? 0.07 : 0.14);
-    const r = w * 0.14;
+    const nw = w * sh.neckW, nh = h * sh.neckH, so = h * sh.shoulder, r = w * sh.r;
+    const ys = top + nh + so;
     c.beginPath();
-    c.moveTo(-neckW / 2, top + h * 0.04);
-    c.lineTo(-neckW / 2, top + neckH);
-    if (style === 'square') c.quadraticCurveTo(-w / 2, top + neckH, -w / 2, top + neckH + shoulder);
-    else c.bezierCurveTo(-neckW / 2, top + neckH + shoulder * 0.6, -w / 2, top + neckH + shoulder * 0.3, -w / 2, top + neckH + shoulder);
+    c.moveTo(-nw / 2, top + h * 0.03);
+    c.lineTo(-nw / 2, top + nh);
+    if (sh.square) c.quadraticCurveTo(-w / 2, top + nh, -w / 2, ys);
+    else c.bezierCurveTo(-nw / 2, top + nh + so * 0.55, -w / 2, top + nh + so * 0.25, -w / 2, ys);
     c.lineTo(-w / 2, bot - r);
     c.quadraticCurveTo(-w / 2, bot, -w / 2 + r, bot);
     c.lineTo(w / 2 - r, bot);
     c.quadraticCurveTo(w / 2, bot, w / 2, bot - r);
-    c.lineTo(w / 2, top + neckH + shoulder);
-    if (style === 'square') c.quadraticCurveTo(w / 2, top + neckH, neckW / 2, top + neckH);
-    else c.bezierCurveTo(w / 2, top + neckH + shoulder * 0.3, neckW / 2, top + neckH + shoulder * 0.6, neckW / 2, top + neckH);
-    c.lineTo(neckW / 2, top + h * 0.04);
+    c.lineTo(w / 2, ys);
+    if (sh.square) c.quadraticCurveTo(w / 2, top + nh, nw / 2, top + nh);
+    else c.bezierCurveTo(w / 2, top + nh + so * 0.25, nw / 2, top + nh + so * 0.55, nw / 2, top + nh);
+    c.lineTo(nw / 2, top + h * 0.03);
     c.closePath();
-    return { top, bot, neckW, neckH, shoulder };
+    return { top, bot, nw, nh, ys };
   }
 
-  function drawBottle(c, w, h, style, dayNo, glow) {
-    const lw = Math.max(1.1, w * 0.06);
-    const g = bottlePath(c, w, h, style);
-    const grad = c.createLinearGradient(-w / 2, 0, w / 2, 0);
-    grad.addColorStop(0, '#7a3a0e');
-    grad.addColorStop(0.32, '#bf7228');
-    grad.addColorStop(0.55, '#dd9a45');
-    grad.addColorStop(1, '#8a4512');
+  // A glass bottle shaded to read as 3D: side falloff, vertical depth, specular streaks, rim light.
+  function drawBottle(c, w, h, shape, tintIdx, glow, shadow) {
+    const sh = shapeOf(shape);
+    const t = TINTS[tintIdx];
+    const g = bottlePath(c, w, h, sh);
+
     c.save();
-    if (glow) { c.shadowColor = 'rgba(255,200,90,0.95)'; c.shadowBlur = 24 * glow; }
-    c.fillStyle = grad;
+    if (glow) { c.shadowColor = `rgba(166,242,198,${0.9 * glow})`; c.shadowBlur = 30 * glow; }
+    else if (shadow) { c.shadowColor = 'rgba(0,0,0,0.5)'; c.shadowBlur = w * 0.35; c.shadowOffsetY = w * 0.12; }
+    c.globalAlpha = t.alpha;
+    let gr = c.createLinearGradient(-w / 2, 0, w / 2, 0);
+    gr.addColorStop(0, t.dark);
+    gr.addColorStop(0.22, t.body);
+    gr.addColorStop(0.4, t.light);
+    gr.addColorStop(0.62, t.body);
+    gr.addColorStop(1, t.dark);
+    c.fillStyle = gr;
     c.fill();
     c.restore();
+
+    c.save();
+    bottlePath(c, w, h, sh);
+    c.clip();
+    // depth: darker toward the bottom, faint light at the shoulder
+    gr = c.createLinearGradient(0, -h / 2, 0, h / 2);
+    gr.addColorStop(0, 'rgba(255,255,255,0.10)');
+    gr.addColorStop(0.45, 'rgba(0,0,0,0)');
+    gr.addColorStop(1, 'rgba(0,0,0,0.28)');
+    c.fillStyle = gr;
+    c.fillRect(-w / 2, -h / 2, w, h);
+    if (shape === 'ribbed') {
+      for (let i = 1; i < 7; i++) {
+        const x = -w / 2 + (w / 7) * i;
+        c.fillStyle = i % 2 ? 'rgba(0,0,0,0.13)' : 'rgba(255,255,255,0.12)';
+        c.fillRect(x - w * 0.025, g.ys, w * 0.05, g.bot - g.ys);
+      }
+    }
+    // specular streaks
+    c.fillStyle = 'rgba(255,255,255,0.55)';
+    roundRect(c, -w * 0.3, g.ys + h * 0.03, Math.max(1.2, w * 0.07), (g.bot - g.ys) * 0.78, w * 0.04);
+    c.fill();
+    c.fillStyle = 'rgba(255,255,255,0.22)';
+    roundRect(c, w * 0.26, g.ys + h * 0.06, Math.max(1, w * 0.04), (g.bot - g.ys) * 0.6, w * 0.02);
+    c.fill();
+    c.fillStyle = 'rgba(255,255,255,0.4)';
+    c.fillRect(-g.nw * 0.3, g.top + h * 0.1, Math.max(1, w * 0.05), g.nh * 0.75);
+    c.restore();
+
+    // rim light + soft dark edge
+    bottlePath(c, w, h, sh);
     c.lineJoin = 'round';
-    c.lineWidth = lw;
-    c.strokeStyle = INK;
+    c.lineWidth = Math.max(1, w * 0.03);
+    c.strokeStyle = 'rgba(0,0,0,0.35)';
+    c.stroke();
+    c.lineWidth = Math.max(0.6, w * 0.018);
+    c.strokeStyle = 'rgba(255,255,255,0.28)';
     c.stroke();
 
-    const bodyTop = g.top + g.neckH + g.shoulder;
-    const bodyH = g.bot - bodyTop;
-    // glass shine
-    c.strokeStyle = 'rgba(255,246,225,0.75)';
-    c.lineWidth = Math.max(1, w * 0.07);
-    c.lineCap = 'round';
-    c.beginPath();
-    c.moveTo(-w / 2 + w * 0.2, bodyTop + bodyH * 0.08);
-    c.lineTo(-w / 2 + w * 0.2, bodyTop + bodyH * 0.2);
-    c.stroke();
-    c.beginPath();
-    c.moveTo(-g.neckW / 2 + w * 0.06, g.top + h * 0.13);
-    c.lineTo(-g.neckW / 2 + w * 0.06, g.top + g.neckH * 0.85);
-    c.stroke();
-    // neck ring
-    c.strokeStyle = INK;
-    c.lineWidth = lw * 0.8;
-    c.beginPath();
-    c.moveTo(-g.neckW / 2, g.top + h * 0.12);
-    c.lineTo(g.neckW / 2, g.top + h * 0.12);
-    c.stroke();
-    // cap
-    c.fillStyle = '#4a2a12';
-    roundRect(c, -g.neckW / 2 - w * 0.04, g.top - h * 0.01, g.neckW + w * 0.08, h * 0.08, w * 0.05);
+    // lip ring
+    c.fillStyle = 'rgba(255,255,255,0.3)';
+    c.fillRect(-g.nw / 2, g.top + h * 0.085, g.nw, h * 0.018);
+
+    // cork or cap
+    const capW = g.nw * 1.08, capH = h * (t.cap === 'cork' ? 0.09 : 0.08);
+    gr = c.createLinearGradient(-capW / 2, 0, capW / 2, 0);
+    if (t.cap === 'cork') { gr.addColorStop(0, '#9c8a6a'); gr.addColorStop(0.4, '#e6d9bd'); gr.addColorStop(1, '#a8957a'); }
+    else { gr.addColorStop(0, '#1f3a2a'); gr.addColorStop(0.4, '#4f7d61'); gr.addColorStop(1, '#203b2b'); }
+    c.fillStyle = gr;
+    roundRect(c, -capW / 2, g.top - h * 0.02, capW, capH, w * 0.05);
     c.fill();
-    c.lineWidth = lw * 0.8;
-    c.stroke();
-    // label
-    const lbw = w * 0.74, lbh = bodyH * 0.5, lby = bodyTop + bodyH * 0.2;
-    c.fillStyle = '#f5e6c4';
-    roundRect(c, -lbw / 2, lby, lbw, lbh, w * 0.06);
+
+    // blank paper label
+    const bodyH = g.bot - g.ys;
+    const lw = w * (shape === 'flask' ? 0.6 : 0.68), lh = bodyH * (shape === 'tall' ? 0.42 : 0.5);
+    const ly = g.ys + bodyH * 0.2;
+    gr = c.createLinearGradient(-lw / 2, 0, lw / 2, 0);
+    gr.addColorStop(0, '#bdb7a8');
+    gr.addColorStop(0.35, '#ece7da');
+    gr.addColorStop(0.75, '#e2dccd');
+    gr.addColorStop(1, '#b3ad9e');
+    c.fillStyle = gr;
+    roundRect(c, -lw / 2, ly, lw, lh, w * 0.04);
     c.fill();
-    c.lineWidth = lw * 0.75;
-    c.strokeStyle = INK;
-    c.stroke();
-    if (dayNo && w >= 15) {
-      c.fillStyle = '#7a5532';
-      c.textAlign = 'center';
-      c.textBaseline = 'middle';
-      const fs = Math.min(lbw * (String(dayNo).length > 3 ? 0.32 : 0.4), lbh * 0.42);
-      c.font = `800 ${fs}px Figtree, -apple-system, sans-serif`;
-      c.fillText(String(dayNo), 0, lby + lbh * 0.55);
-    }
   }
 
   function drawCase(c, w, h, count) {
-    const lw = Math.max(1.2, w * 0.018);
-    // bottle tops peeking out
-    for (let i = 0; i < 5; i++) {
-      const x = -w / 2 + (w / 5) * (i + 0.5);
-      c.fillStyle = '#b8692a';
-      roundRect(c, x - w * 0.045, -h / 2 - h * 0.28, w * 0.09, h * 0.34, 3);
+    let gr = c.createLinearGradient(0, -h / 2, 0, h / 2);
+    gr.addColorStop(0, '#5c7a66');
+    gr.addColorStop(1, '#34493b');
+    // necks peeking out
+    for (let i = 0; i < 4; i++) {
+      const x = -w / 2 + (w / 4) * (i + 0.5);
+      c.fillStyle = i % 2 ? 'rgba(221,227,219,0.9)' : 'rgba(135,173,146,0.95)';
+      roundRect(c, x - w * 0.05, -h / 2 - h * 0.3, w * 0.1, h * 0.36, 3);
       c.fill();
-      c.strokeStyle = INK; c.lineWidth = lw; c.stroke();
-      c.fillStyle = '#4a2a12';
-      roundRect(c, x - w * 0.05, -h / 2 - h * 0.32, w * 0.1, h * 0.09, 2);
-      c.fill(); c.stroke();
+      c.fillStyle = '#d9cbb0';
+      roundRect(c, x - w * 0.055, -h / 2 - h * 0.34, w * 0.11, h * 0.08, 2);
+      c.fill();
     }
-    c.fillStyle = '#b07a42';
-    roundRect(c, -w / 2, -h / 2, w, h, w * 0.03);
+    c.fillStyle = gr;
+    roundRect(c, -w / 2, -h / 2, w, h, w * 0.04);
     c.fill();
-    c.strokeStyle = INK; c.lineWidth = lw; c.stroke();
-    c.strokeStyle = 'rgba(59,38,20,0.55)';
-    for (let i = 1; i < 3; i++) { const y = -h / 2 + (h / 3) * i; c.beginPath(); c.moveTo(-w / 2 + 2, y); c.lineTo(w / 2 - 2, y); c.stroke(); }
+    c.strokeStyle = 'rgba(255,255,255,0.18)';
+    c.lineWidth = 1;
+    c.stroke();
     if (w > 40) {
-      c.fillStyle = '#f5e6c4';
-      roundRect(c, -w * 0.13, -h * 0.26, w * 0.26, h * 0.52, 4);
-      c.fill(); c.strokeStyle = INK; c.stroke();
-      c.fillStyle = INK;
+      c.fillStyle = '#e8e3d6';
+      roundRect(c, -w * 0.14, -h * 0.26, w * 0.28, h * 0.52, 4);
+      c.fill();
+      c.fillStyle = '#2b3a31';
       c.font = `800 ${h * 0.3}px Figtree, -apple-system, sans-serif`;
       c.textAlign = 'center';
       c.textBaseline = 'middle';
@@ -302,160 +338,104 @@
     }
   }
 
-  // White cartoon glove on an arm, waving
-  function drawHand(c, ax, ay, hx, hy, s, ang) {
-    c.lineCap = 'round';
-    c.strokeStyle = INK;
-    c.lineWidth = Math.max(2, s * 0.13);
-    c.beginPath();
-    c.moveTo(ax, ay);
-    c.quadraticCurveTo(ax + (hx - ax) * 0.2, hy + (ay - hy) * 0.2, hx, hy + s * 0.3);
-    c.stroke();
+  // Dark glass display case the pile sits in. Returns the geometry the physics uses.
+  function boxGeometry(W, H) {
+    const x = Math.round(W * 0.06), w = W - x * 2;
+    const y = Math.round(H * 0.19);
+    const floor = Math.round(H * 0.7);
+    return { x, y, w, floor, tray: Math.round(H * 0.79), r: Math.min(34, W * 0.08) };
+  }
+
+  function drawScene(c, W, H, b) {
+    let g = c.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#1c2220');
+    g.addColorStop(1, '#141817');
+    c.fillStyle = g;
+    c.fillRect(0, 0, W, H);
+
+    // back of the case
+    const bh = b.floor - b.y + 12;
+    roundRect(c, b.x, b.y, b.w, bh, b.r);
+    g = c.createRadialGradient(W / 2, b.floor, 10, W / 2, b.floor - bh * 0.3, Math.max(b.w, bh) * 0.85);
+    g.addColorStop(0, '#26352e');
+    g.addColorStop(0.55, '#141b18');
+    g.addColorStop(1, '#0c100f');
+    c.fillStyle = g;
+    c.fill();
+    // inner wall shading on the sides
     c.save();
-    c.translate(hx, hy);
-    c.rotate(ang);
-    c.lineWidth = Math.max(1.2, s * 0.06);
-    c.fillStyle = '#fffaf0';
-    const ell = (x, y, rx, ry, r = 0) => { c.beginPath(); c.ellipse(x, y, rx, ry, r, 0, Math.PI * 2); c.fill(); c.stroke(); };
-    ell(-s * 0.2, -s * 0.36, s * 0.1, s * 0.2, -0.2);
-    ell(0, -s * 0.42, s * 0.1, s * 0.22);
-    ell(s * 0.2, -s * 0.36, s * 0.1, s * 0.2, 0.2);
-    ell(-s * 0.36, -s * 0.02, s * 0.1, s * 0.19, -1.0);
-    ell(0, -s * 0.05, s * 0.3, s * 0.28);
-    roundRect(c, -s * 0.24, s * 0.18, s * 0.48, s * 0.17, s * 0.06);
-    c.fill(); c.stroke();
-    // knuckle lines
-    c.beginPath();
-    c.moveTo(-s * 0.08, -s * 0.12); c.lineTo(-s * 0.08, -s * 0.02);
-    c.moveTo(s * 0.08, -s * 0.12); c.lineTo(s * 0.08, -s * 0.02);
+    roundRect(c, b.x, b.y, b.w, bh, b.r);
+    c.clip();
+    g = c.createLinearGradient(b.x, 0, b.x + b.w, 0);
+    g.addColorStop(0, 'rgba(166,242,198,0.07)');
+    g.addColorStop(0.08, 'rgba(0,0,0,0)');
+    g.addColorStop(0.92, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(166,242,198,0.07)');
+    c.fillStyle = g;
+    c.fillRect(b.x, b.y, b.w, bh);
+    g = c.createLinearGradient(0, b.y, 0, b.y + bh * 0.25);
+    g.addColorStop(0, 'rgba(0,0,0,0.45)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = g;
+    c.fillRect(b.x, b.y, b.w, bh * 0.25);
+    c.restore();
+    // glowing rim
+    roundRect(c, b.x, b.y, b.w, bh, b.r);
+    g = c.createLinearGradient(0, b.y, 0, b.floor);
+    g.addColorStop(0, 'rgba(166,242,198,0.55)');
+    g.addColorStop(0.5, 'rgba(166,242,198,0.18)');
+    g.addColorStop(1, 'rgba(166,242,198,0.05)');
+    c.strokeStyle = g;
+    c.lineWidth = 2.5;
     c.stroke();
+
+    // soft light pooling on the floor
+    g = c.createRadialGradient(W / 2, b.floor, 0, W / 2, b.floor, b.w * 0.55);
+    g.addColorStop(0, 'rgba(166,242,198,0.12)');
+    g.addColorStop(1, 'rgba(166,242,198,0)');
+    c.fillStyle = g;
+    c.fillRect(b.x, b.floor - b.w * 0.3, b.w, b.w * 0.3);
+
+    // tray the bottles rest on
+    const tx = b.x - 6, tw = b.w + 12;
+    roundRect(c, tx, b.floor - 4, tw, b.tray - b.floor + 4, 16);
+    g = c.createLinearGradient(0, b.floor, 0, b.tray);
+    g.addColorStop(0, '#323a37');
+    g.addColorStop(0.18, '#232a27');
+    g.addColorStop(1, '#121615');
+    c.fillStyle = g;
+    c.fill();
+    g = c.createLinearGradient(tx, 0, tx + tw, 0);
+    g.addColorStop(0, 'rgba(166,242,198,0.08)');
+    g.addColorStop(0.5, 'rgba(166,242,198,0.45)');
+    g.addColorStop(1, 'rgba(166,242,198,0.08)');
+    c.strokeStyle = g;
+    c.lineWidth = 1.5;
+    c.beginPath();
+    c.moveTo(tx + 14, b.floor - 3);
+    c.lineTo(tx + tw - 14, b.floor - 3);
+    c.stroke();
+    // shadow under the tray
+    c.save();
+    c.filter = 'blur(8px)';
+    c.fillStyle = 'rgba(0,0,0,0.4)';
+    roundRect(c, tx + 16, b.tray - 6, tw - 32, 16, 8);
+    c.fill();
     c.restore();
   }
 
-  function seeded(seed) {
-    let x = seed;
-    return () => { x = (x * 16807) % 2147483647; return (x - 1) / 2147483646; };
-  }
-
-  // Warm, hand-drawn bar backdrop. fy is the bar top the bottles rest on.
-  function drawScene(c, W, H, fy) {
-    const ink = (lw = 1.6, a = 0.75) => { c.strokeStyle = `rgba(59,38,20,${a})`; c.lineWidth = lw; c.lineJoin = 'round'; c.lineCap = 'round'; };
-    // wall
-    let g = c.createLinearGradient(0, 0, 0, fy);
-    g.addColorStop(0, '#f9ebcb');
-    g.addColorStop(1, '#efd5a1');
+  // faint reflection across the front of the case, drawn over the bottles
+  function drawGlassFront(c, b) {
+    const bh = b.floor - b.y;
+    const g = c.createLinearGradient(b.x, b.y, b.x + b.w, b.floor);
+    g.addColorStop(0, 'rgba(255,255,255,0.06)');
+    g.addColorStop(0.3, 'rgba(255,255,255,0.0)');
+    g.addColorStop(0.62, 'rgba(255,255,255,0.0)');
+    g.addColorStop(0.7, 'rgba(255,255,255,0.035)');
+    g.addColorStop(0.78, 'rgba(255,255,255,0.0)');
     c.fillStyle = g;
-    c.fillRect(0, 0, W, H);
-
-    // wainscot panel
-    const wt = fy - H * 0.16;
-    c.fillStyle = '#d6aa6c';
-    c.fillRect(0, wt, W, fy - wt);
-    c.fillStyle = '#c4935a';
-    c.fillRect(0, wt, W, H * 0.012);
-    ink(1.4, 0.45);
-    c.beginPath(); c.moveTo(0, wt); c.lineTo(W, wt); c.stroke();
-    c.strokeStyle = 'rgba(59,38,20,0.25)';
-    for (let x = W * 0.08; x < W; x += W / 5.5) c.strokeRect(x, wt + H * 0.03, W / 5.5 - W * 0.05, fy - wt - H * 0.05);
-
-    // arched doorway on the left
-    const ax = -W * 0.05, aw = W * 0.26, at = H * 0.07, ab = wt + 2, r = aw / 2;
-    c.fillStyle = '#a66d36';
-    c.beginPath();
-    c.moveTo(ax, ab); c.lineTo(ax, at + r); c.arc(ax + r, at + r, r, Math.PI, 0); c.lineTo(ax + aw, ab); c.closePath();
-    c.fill(); ink(1.8); c.stroke();
-    const ins = W * 0.028;
-    c.fillStyle = '#e7c98f';
-    c.beginPath();
-    c.moveTo(ax + ins, ab); c.lineTo(ax + ins, at + r); c.arc(ax + r, at + r, r - ins, Math.PI, 0); c.lineTo(ax + aw - ins, ab); c.closePath();
-    c.fill(); ink(1.2, 0.5); c.stroke();
-    c.fillStyle = '#efdcae';
-    c.fillRect(ax + ins * 1.8, at + r * 1.5, aw * 0.55, H * 0.08);
-    ink(1.2, 0.55); c.strokeRect(ax + ins * 1.8, at + r * 1.5, aw * 0.55, H * 0.08);
-
-    // potted plant
-    const px = W * 0.12, py = wt;
-    c.fillStyle = '#7f9a5a';
-    ink(1.2, 0.6);
-    [[-0.9, 0.05], [-0.4, 0.07], [0.15, 0.065], [0.7, 0.05]].forEach(([a, len]) => {
-      c.save(); c.translate(px, py - H * 0.035); c.rotate(a);
-      c.beginPath(); c.ellipse(0, -H * len * 0.5, W * 0.016, H * len * 0.5, 0, 0, Math.PI * 2); c.fill(); c.stroke();
-      c.restore();
-    });
-    c.fillStyle = '#b5683a';
-    c.beginPath(); c.moveTo(px - W * 0.03, py - H * 0.04); c.lineTo(px + W * 0.03, py - H * 0.04); c.lineTo(px + W * 0.022, py); c.lineTo(px - W * 0.022, py); c.closePath();
-    c.fill(); c.stroke();
-
-    // wall sconce with warm glow
-    const lx = W * 0.27, ly = H * 0.25;
-    g = c.createRadialGradient(lx, ly, 0, lx, ly, Math.max(W, H) * 0.38);
-    g.addColorStop(0, 'rgba(255,214,120,0.6)');
-    g.addColorStop(1, 'rgba(255,214,120,0)');
-    c.fillStyle = g;
-    c.fillRect(0, 0, W, H);
-    ink(1.6);
-    c.beginPath(); c.moveTo(lx, ly - H * 0.09); c.lineTo(lx, ly - H * 0.035); c.stroke();
-    c.fillStyle = '#6b4320';
-    c.beginPath(); c.moveTo(lx - W * 0.035, ly - H * 0.01); c.lineTo(lx + W * 0.035, ly - H * 0.01); c.lineTo(lx + W * 0.018, ly - H * 0.04); c.lineTo(lx - W * 0.018, ly - H * 0.04); c.closePath(); c.fill(); c.stroke();
-    c.fillStyle = '#ffe49a';
-    c.beginPath(); c.arc(lx, ly + H * 0.008, W * 0.022, 0, Math.PI * 2); c.fill(); ink(1.2, 0.5); c.stroke();
-
-    // picture frame on the right
-    const fx = W * 0.8, fyy = H * 0.2, fw = W * 0.16, fh = H * 0.2;
-    c.fillStyle = '#8f5d2c';
-    c.fillRect(fx, fyy, fw, fh); ink(1.6); c.strokeRect(fx, fyy, fw, fh);
-    c.fillStyle = '#ecd6a6';
-    c.fillRect(fx + fw * 0.12, fyy + fh * 0.1, fw * 0.76, fh * 0.8);
-    ink(1.1, 0.5);
-    c.beginPath(); c.arc(fx + fw * 0.5, fyy + fh * 0.36, fw * 0.12, 0, Math.PI * 2); c.stroke();
-    c.beginPath(); c.moveTo(fx + fw * 0.28, fyy + fh * 0.82); c.quadraticCurveTo(fx + fw * 0.5, fyy + fh * 0.42, fx + fw * 0.72, fyy + fh * 0.82); c.stroke();
-
-    // bar counter: top surface + front panel
-    const th = Math.max(14, H * 0.045);
-    g = c.createLinearGradient(0, fy, 0, fy + th);
-    g.addColorStop(0, '#d0914e');
-    g.addColorStop(1, '#9c602c');
-    c.fillStyle = g;
-    c.fillRect(0, fy, W, th);
-    c.fillStyle = 'rgba(255,225,170,0.6)';
-    c.fillRect(0, fy, W, 2);
-    ink(1.8); c.beginPath(); c.moveTo(0, fy); c.lineTo(W, fy); c.stroke();
-    ink(1.6); c.beginPath(); c.moveTo(0, fy + th); c.lineTo(W, fy + th); c.stroke();
-    const rnd = seeded(7);
-    ink(1, 0.25);
-    for (let i = 0; i < 9; i++) {
-      const x = rnd() * W, y = fy + 4 + rnd() * (th - 8), len = W * (0.06 + rnd() * 0.14);
-      c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + len / 2, y + (rnd() - 0.5) * 3, x + len, y); c.stroke();
-    }
-    // counter front, bulging slightly toward the viewer, then the cream floor
-    const fb = fy + th + H * 0.11;
-    c.fillStyle = '#f7ead0';
-    c.fillRect(0, fy + th, W, H - fy - th);
-    g = c.createLinearGradient(0, fy + th, 0, fb + H * 0.03);
-    g.addColorStop(0, '#804d23');
-    g.addColorStop(1, '#5e3618');
-    c.fillStyle = g;
-    c.beginPath();
-    c.moveTo(0, fy + th); c.lineTo(W, fy + th); c.lineTo(W, fb - H * 0.02);
-    c.quadraticCurveTo(W / 2, fb + H * 0.035, 0, fb - H * 0.02); c.closePath();
+    roundRect(c, b.x, b.y, b.w, bh, b.r);
     c.fill();
-    ink(1.6); c.stroke();
-    ink(1.2, 0.35);
-    for (let x = W / 7; x < W; x += W / 7) {
-      const yb = fb - H * 0.02 + (1 - Math.pow((x - W / 2) / (W / 2), 2)) * H * 0.0275;
-      c.beginPath(); c.moveTo(x, fy + th); c.lineTo(x, yb - 2); c.stroke();
-    }
-    // soft shadow under the counter
-    g = c.createLinearGradient(0, fb, 0, fb + H * 0.06);
-    g.addColorStop(0, 'rgba(90,55,20,0.18)');
-    g.addColorStop(1, 'rgba(90,55,20,0)');
-    c.fillStyle = g;
-    c.fillRect(0, fb, W, H * 0.06);
-
-    // paper speckle for a printed-illustration feel
-    const r2 = seeded(42);
-    c.fillStyle = 'rgba(90,60,25,0.06)';
-    for (let i = 0; i < (W * H) / 900; i++) c.fillRect(r2() * W, r2() * H, 1.2, 1.2);
   }
 
   /* =========================================================
@@ -463,9 +443,10 @@
      ========================================================= */
   const Pile = (() => {
     const M = window.Matter;
-    const BASE_W = 30, BASE_H = 84, MAX_LOOSE = 140, CASE_SIZE = 12, FLOOR = 0.62;
-    let engine, runner, canvas, ctx, W = 0, H = 0, floorY = 0, dpr = 1, walls = [], items = [], gen = 0;
-    let running = false, lastClink = 0, scale = 1, built = false, scene = null, down = null, frameNo = 0, hands = null;
+    const BASE_W = 36, BASE_H = 92, MAX_LOOSE = 140, CASE_SIZE = 12;
+    const DIMS = { gin: [1, 1], flask: [1.18, 0.8], tall: [0.88, 1.08], ribbed: [1.05, 0.95] };
+    let engine, runner, canvas, ctx, W = 0, H = 0, box = null, dpr = 1, walls = [], items = [], gen = 0;
+    let running = false, lastClink = 0, scale = 1, built = false, scene = null, down = null;
 
     function init(c) {
       canvas = c;
@@ -515,7 +496,7 @@
       const r = canvas.getBoundingClientRect();
       dpr = Math.min(window.devicePixelRatio || 1, 2.5);
       W = r.width; H = r.height;
-      floorY = Math.round(H * FLOOR);
+      box = boxGeometry(W, H);
       canvas.width = Math.round(W * dpr);
       canvas.height = Math.round(H * dpr);
       canvas.pixelRatio = dpr;
@@ -525,7 +506,7 @@
         scene.height = canvas.height;
         const sc = scene.getContext('2d');
         sc.scale(dpr, dpr);
-        drawScene(sc, W, H, floorY);
+        drawScene(sc, W, H, box);
       }
     }
 
@@ -533,9 +514,9 @@
       M.Composite.remove(engine.world, walls);
       const t = 200, opts = { isStatic: true, friction: 0.9, restitution: 0.1 };
       walls = [
-        M.Bodies.rectangle(W / 2, floorY + t / 2, W * 3, t, opts),
-        M.Bodies.rectangle(-t / 2, floorY / 2 - H * 2, t, H * 6, opts),
-        M.Bodies.rectangle(W + t / 2, floorY / 2 - H * 2, t, H * 6, opts),
+        M.Bodies.rectangle(W / 2, box.floor + t / 2, W * 3, t, opts),
+        M.Bodies.rectangle(box.x + 3 - t / 2, box.floor - H * 2, t, H * 4, opts),
+        M.Bodies.rectangle(box.x + box.w - 3 + t / 2, box.floor - H * 2, t, H * 4, opts),
       ];
       M.Composite.add(engine.world, walls);
     }
@@ -549,7 +530,6 @@
       makeWalls();
       M.Composite.remove(engine.world, items.map(i => i.body));
       items = [];
-      hands = null;
 
       // group older bottles into cases once the pile gets big
       const units = [];
@@ -563,7 +543,7 @@
 
       const unitArea = u => u.kind === 'case' ? 3.4 * 0.62 : 1;
       const totalArea = units.reduce((a, u) => a + unitArea(u), 0) * BASE_W * BASE_H;
-      scale = totalArea ? clamp(Math.sqrt((0.36 * W * floorY) / totalArea), 0.28, 1.3) : 1;
+      scale = totalArea ? clamp(Math.sqrt((0.48 * box.w * (box.floor - box.y)) / totalArea), 0.26, 1.7) : 1;
 
       const old = units.filter(u => !u.days.some(d => d.isNew));
       const fresh = units.filter(u => u.days.some(d => d.isNew));
@@ -586,71 +566,30 @@
 
     function drop(u, isFresh, settled) {
       const isCase = u.kind === 'case';
-      const w = (isCase ? BASE_W * 3.4 : BASE_W) * scale;
-      const h = (isCase ? BASE_H * 0.62 : BASE_H) * scale;
+      const day = u.days[u.days.length - 1];
+      const hash = Math.imul(day.day + 7, 2654435761) >>> 0;
+      const shape = SHAPES[hash % SHAPES.length];
+      const tint = (hash >>> 4) % TINTS.length;
+      const [dw, dh] = isCase ? [3.4, 0.62] : DIMS[shape];
+      const w = BASE_W * dw * scale;
+      const h = BASE_H * dh * scale;
       // bias drops toward the middle so the bottles heap into a mound
       const spread = (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
-      const x = clamp(W / 2 + spread * W * 0.36, w / 2 + 6, W - w / 2 - 6);
-      const y = settled ? floorY - h - Math.random() * floorY * 0.5 : -h - Math.random() * 60;
+      const x = clamp(W / 2 + spread * box.w * 0.34, box.x + w / 2 + 6, box.x + box.w - w / 2 - 6);
+      const y = settled ? box.floor - h - Math.random() * (box.floor - box.y) * 0.5 : -h - Math.random() * 60;
       const body = M.Bodies.rectangle(x, y, w, h, {
-        chamfer: { radius: isCase ? 3 : [w * 0.32, w * 0.32, w * 0.14, w * 0.14] },
+        chamfer: { radius: isCase ? 3 : [w * 0.3, w * 0.3, w * 0.16, w * 0.16] },
         restitution: 0.18, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.004,
         density: isCase ? 0.004 : 0.002,
         angle: (Math.random() - 0.5) * (isCase ? 0.4 : 1.6),
       });
       M.Body.setVelocity(body, { x: (Math.random() - 0.5) * 2, y: isFresh ? 4 : 2 });
       M.Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.15);
-      const day = u.days[u.days.length - 1];
       items.push({
-        body, w, h, kind: u.kind, days: u.days,
-        style: day.day % 2 ? 'square' : 'round',
+        body, w, h, kind: u.kind, days: u.days, shape, tint,
         glowUntil: isFresh ? performance.now() + 4500 : 0,
       });
       M.Composite.add(engine.world, body);
-    }
-
-    // pick the highest bottles on the left and right flanks of the settled pile to wave from
-    function pickHands() {
-      if (!state.settings.hands || items.length < 5) return null;
-      if (items.some(i => i.body.speed > 0.6)) return hands;
-      const byX = items.slice().sort((a, b) => a.body.position.x - b.body.position.x);
-      const third = Math.max(1, Math.floor(byX.length / 3));
-      const highest = arr => arr.reduce((m, i) => (i.body.position.y < m.body.position.y ? i : m));
-      return { left: highest(byX.slice(0, third)), right: highest(byX.slice(-third)) };
-    }
-
-    function drawHands(t) {
-      if (!hands) return;
-      const s = clamp(40 * scale, 18, 42);
-      [['left', -1], ['right', 1]].forEach(([k, dir], idx) => {
-        const it = hands[k];
-        if (!it) return;
-        const ax = it.body.position.x, ay = it.body.position.y;
-        const hx = clamp(ax + dir * s * 1.25, s * 0.6, W - s * 0.6);
-        const hy = Math.max(ay - s * 1.15, s * 1.6);
-        const wave = Math.sin(t / 260 + idx * 1.7) * 0.32;
-        drawHand(ctx, ax, ay, hx, hy, s, dir * 0.35 + wave);
-      });
-    }
-
-    function drawSpeedLines(it) {
-      const b = it.body;
-      const sp = b.speed;
-      if (sp < 5 || b.position.y > floorY - it.h * 0.3) return;
-      const vx = b.velocity.x / sp, vy = b.velocity.y / sp;
-      const px = -vy, py = vx;
-      const len = Math.min(sp * 4, 46) * Math.max(0.5, scale);
-      ctx.strokeStyle = 'rgba(59,38,20,0.55)';
-      ctx.lineWidth = 1.6;
-      ctx.lineCap = 'round';
-      for (const k of [-1, 0, 1]) {
-        const sx = b.position.x - vx * it.h * 0.55 + px * k * it.w * 0.7;
-        const sy = b.position.y - vy * it.h * 0.55 + py * k * it.w * 0.7;
-        ctx.beginPath();
-        ctx.moveTo(sx, sy);
-        ctx.quadraticCurveTo(sx - vx * len * 0.5 + px * k * 4, sy - vy * len * 0.5 + py * k * 4, sx - vx * len, sy - vy * len);
-        ctx.stroke();
-      }
     }
 
     function frame(t) {
@@ -659,23 +598,22 @@
       if (scene) ctx.drawImage(scene, 0, 0);
       else ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      if (++frameNo % 20 === 0) hands = pickHands();
-      drawHands(t);
       const now = performance.now();
+      const shadows = items.length < 90;
       for (const it of items) {
         const b = it.body;
         if (b.position.y > H + 400) continue;
-        drawSpeedLines(it);
         ctx.save();
         ctx.translate(b.position.x, b.position.y);
         ctx.rotate(b.angle);
         if (it.kind === 'case') drawCase(ctx, it.w, it.h, it.days.length);
         else {
           const glow = it.glowUntil > now ? (it.glowUntil - now) / 4500 : 0;
-          drawBottle(ctx, it.w, it.h, it.style, it.days[0].day, glow);
+          drawBottle(ctx, it.w, it.h, it.shape, it.tint, glow, shadows);
         }
         ctx.restore();
       }
+      if (box) drawGlassFront(ctx, box);
       requestAnimationFrame(frame);
     }
 
@@ -720,18 +658,18 @@
     const s = state.settings;
     $('#dayCount').textContent = int(c.streak);
     $('#dayWord').textContent = plural(c.streak, 'day');
-    $('#subline').textContent = c.streak === 0 ? 'Today is day one. Start again now.' : 'One day at a time.';
-    $('#captionMain').textContent = `${int(c.bottles)} ${plural(c.bottles, 'bottle')} you didn't drink`;
-    $('#captionSub').textContent = pileView === 'bottles' ? 'Tap a bottle to revisit that day.' : 'Every drop of it, still in the bottle.';
+    $('#subline').textContent = c.streak === 0 ? 'Day one starts now.' : 'Look how far you\'ve come.';
+    $('#captionMain').textContent = `${int(c.bottles)} ${plural(c.bottles, 'bottle')} left behind`;
+    $('#captionSub').textContent = pileView === 'bottles' ? 'A little more freedom. Every day.' : 'Every drop of it, still in the bottle.';
     $('#qsMoney').textContent = money(c.money);
     $('#qsVolume').textContent = volumeText(c, c.liters >= 100 ? 0 : 2);
-    $('#qsTime').textContent = c.hours >= 1000 ? `${int(c.hours / 24)} days` : `${int(c.hours)} hrs`;
-    $('#basisText').textContent = `Based on ${s.sizeMl} mL / $${s.price} per bottle`;
+    $('#basisText').textContent = `Estimated from ${s.sizeMl} mL at $${s.price} a day`;
     const next = MILESTONES.find(m => m > c.streak) || c.streak + 365;
-    $('#msLabel').textContent = `Next milestone: ${milestoneName(next)}`;
+    const pct = c.streak / next;
+    $('#msLabel').textContent = `${pct >= 0.85 ? 'Almost at' : pct >= 0.5 ? 'Halfway to' : 'On the way to'} ${milestoneName(next)}`;
     $('#msCount').textContent = `${int(c.streak)} / ${int(next)}`;
-    $('#msBar').style.width = `${(c.streak / next) * 100}%`;
-    $('#checkinLabel').textContent = state.journal[c.today] ? 'Update today\'s check-in' : 'How are you feeling today?';
+    $('#msBar').style.width = `${pct * 100}%`;
+    $('#checkinLabel').textContent = state.journal[c.today] ? 'Update today\'s check-in' : 'Check in for today';
     if (pileView === 'liquid') renderLiquid();
   }
 
@@ -739,20 +677,22 @@
     const c = calc();
     const next = LIQUIDS.find(l => l.L > c.liters) || LIQUIDS[LIQUIDS.length - 1];
     const pct = clamp(c.liters / next.L, 0, 1);
-    const fillTop = 26 + 156 * (1 - pct);
+    const fillTop = 30 + 150 * (1 - pct);
+    const glass = 'M30 22 h100 q6 0 6 6 l-6 150 q-1 12 -13 12 h-74 q-12 0 -13 -12 l-6 -150 q0 -6 6 -6z';
     $('#liquidView').innerHTML = `
       <svg class="tank" viewBox="0 0 160 200" aria-hidden="true">
         <defs>
-          <linearGradient id="liq" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#e3a14d"/><stop offset="1" stop-color="#9a5218"/></linearGradient>
-          <clipPath id="tankClip"><path d="M22 24 h116 l-8 158 q-1 8 -9 8 h-82 q-8 0 -9 -8z"/></clipPath>
+          <linearGradient id="liq" x1="0" x2="1"><stop offset="0" stop-color="#8f6a26"/><stop offset=".4" stop-color="#e3c27a"/><stop offset="1" stop-color="#7d5b1e"/></linearGradient>
+          <linearGradient id="gl" x1="0" x2="1"><stop offset="0" stop-color="rgba(166,242,198,.18)"/><stop offset=".4" stop-color="rgba(255,255,255,.06)"/><stop offset="1" stop-color="rgba(166,242,198,.14)"/></linearGradient>
+          <clipPath id="tankClip"><path d="${glass}"/></clipPath>
         </defs>
-        <path d="M22 24 h116 l-8 158 q-1 8 -9 8 h-82 q-8 0 -9 -8z" fill="rgba(255,252,242,.7)"/>
+        <path d="${glass}" fill="url(#gl)"/>
         <g clip-path="url(#tankClip)">
-          <rect x="0" y="${fillTop}" width="160" height="200" fill="url(#liq)"/>
-          <path d="M0 ${fillTop} q20 -6 40 0 t40 0 t40 0 t40 0 v5 h-160z" fill="#f2c27a"/>
+          <rect x="0" y="${fillTop}" width="160" height="200" fill="url(#liq)" opacity=".92"/>
+          <ellipse cx="80" cy="${fillTop}" rx="60" ry="5" fill="#f0d89c" opacity=".8"/>
         </g>
-        <path d="M22 24 h116 l-8 158 q-1 8 -9 8 h-82 q-8 0 -9 -8z" fill="none" stroke="${INK}" stroke-width="3" stroke-linejoin="round"/>
-        <path d="M36 40 l4 110" stroke="#fff" stroke-opacity=".7" stroke-width="5" stroke-linecap="round"/>
+        <path d="${glass}" fill="none" stroke="rgba(166,242,198,.55)" stroke-width="2"/>
+        <path d="M40 36 l5 128" stroke="#fff" stroke-opacity=".35" stroke-width="5" stroke-linecap="round"/>
       </svg>
       <div class="big">${volumeText(c)}</div>
       <div class="sub">${Math.round(pct * 100)}% of ${next.name} ${next.icon}</div>
@@ -784,13 +724,13 @@
       <button class="btn primary block" style="margin-top:12px" data-action="editEntry" data-date="${d.date}">${e ? 'Edit' : 'Write about'} this day</button>`);
     const c = $('#bottleMini').getContext('2d');
     c.translate(46, 94);
-    drawBottle(c, 54, 160, it.style, d.day, 0);
+    drawBottle(c, 56, 150, it.shape, it.tint, 0, true);
   }
 
   /* =========================================================
-     Journey screen
+     Progress screen
      ========================================================= */
-  function renderJourney(openId) {
+  function renderProgress(openId) {
     const c = calc();
     const s = state.settings;
     const goal = s.goalAmount > 0;
@@ -801,11 +741,11 @@
     const letters = state.letters.slice().sort((a, b) => a.unlockDay - b.unlockDay);
     const opts = [7, 14, 30, 60, 90, 180, 365, 730, 1095].filter(d => d > c.bottles);
 
-    $('#screen-journey').innerHTML = `
-      <h1 class="page-title">Journey</h1>
+    $('#screen-progress').innerHTML = `
+      <h1 class="page-title">Progress</h1>
       <div class="card hero">
         <div class="big num">${int(c.streak)}</div>
-        <div class="lbl">${plural(c.streak, 'day')} sober${c.streak !== c.span ? ' this streak' : ''}</div>
+        <div class="lbl">${plural(c.streak, 'day')} alcohol-free${c.streak !== c.span ? ' this streak' : ''}</div>
         <div class="meta">
           <div><b class="num">${int(c.bottles)}</b>bottles in pile</div>
           <div><b class="num">${Math.floor(c.span / 7)}</b>weeks</div>
@@ -912,12 +852,12 @@
       return { d, pts };
     };
     const m = series('mood'), s = series('sleep');
-    const grid = [1, 2, 3, 4, 5].map(v => `<line x1="${padL}" x2="${W - padR}" y1="${ys(v)}" y2="${ys(v)}" stroke="#ece3d4"/><text x="${padL - 6}" y="${ys(v) + 4}" text-anchor="end" font-size="10" fill="#9a8f82">${v}</text>`).join('');
-    const lbl = [0, 14, 29].map(i => `<text x="${xs(i)}" y="${H - 4}" text-anchor="${i === 0 ? 'start' : i === 29 ? 'end' : 'middle'}" font-size="10" fill="#9a8f82">${fmtDate(addDays(end, i - 29), { month: 'short', day: 'numeric' })}</text>`).join('');
+    const grid = [1, 2, 3, 4, 5].map(v => `<line x1="${padL}" x2="${W - padR}" y1="${ys(v)}" y2="${ys(v)}" stroke="#2a312e"/><text x="${padL - 6}" y="${ys(v) + 4}" text-anchor="end" font-size="10" fill="#6d7672">${v}</text>`).join('');
+    const lbl = [0, 14, 29].map(i => `<text x="${xs(i)}" y="${H - 4}" text-anchor="${i === 0 ? 'start' : i === 29 ? 'end' : 'middle'}" font-size="10" fill="#6d7672">${fmtDate(addDays(end, i - 29), { month: 'short', day: 'numeric' })}</text>`).join('');
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Mood and sleep over the last 30 days">${grid}${lbl}
-      <path d="${s.d}" fill="none" stroke="#c27a2c" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/><g fill="#c27a2c">${s.pts}</g>
-      <path d="${m.d}" fill="none" stroke="#2b7b78" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/><g fill="#2b7b78">${m.pts}</g></svg>
-      <div class="legend"><span><i style="background:#2b7b78"></i>Mood</span><span><i style="background:#c27a2c"></i>Sleep quality</span></div>`;
+      <path d="${s.d}" fill="none" stroke="#d9b56a" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/><g fill="#d9b56a">${s.pts}</g>
+      <path d="${m.d}" fill="none" stroke="#a6f2c6" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/><g fill="#a6f2c6">${m.pts}</g></svg>
+      <div class="legend"><span><i style="background:#a6f2c6"></i>Mood</span><span><i style="background:#d9b56a"></i>Sleep quality</span></div>`;
   }
 
   function renderJournal() {
@@ -934,7 +874,7 @@
       <div class="card">${hasData ? chartSVG() : '<div class="empty">Check in daily and you\'ll watch your mood and sleep improve here.</div>'}</div>
       <div class="section-title">Past entries</div>
       <div class="list">${dates.map(entryItem).join('') || '<div class="empty">Past check-ins show up here, and on their bottles in the pile.</div>'}</div>
-      <button class="btn ghost block" style="margin-top:8px;color:var(--teal)" data-action="pickPastDay">+ Add an entry for another day</button>`;
+      <button class="btn ghost block" style="margin-top:8px;color:var(--mint)" data-action="pickPastDay">+ Add an entry for another day</button>`;
   }
 
   function saveEditor(ed) {
@@ -1049,7 +989,6 @@
       <label class="field"><span>Volume units</span><select data-setting="units"><option value="metric" ${s.units === 'metric' ? 'selected' : ''}>Liters</option><option value="us" ${s.units === 'us' ? 'selected' : ''}>Gallons</option></select></label>
       <div class="sec">The pile</div>
       <label class="switch"><span>Glass clink sounds</span><input type="checkbox" data-setting="sound" ${s.sound ? 'checked' : ''}></label>
-      <label class="switch"><span>Waving cartoon hands</span><input type="checkbox" data-setting="hands" ${s.hands ? 'checked' : ''}></label>
 
       <div class="sec">If you slip</div>
       <p class="small muted">A slip doesn't erase your pile. Every bottle you didn't drink stays. Mark the day and your streak starts again.</p>
@@ -1195,7 +1134,7 @@
         if (!Pile.isBuilt() || Math.abs(r.width - sz.W) > 20 || Math.abs(r.height - sz.H) > 40) rebuildPile(!Pile.isBuilt());
       });
     } else Pile.stop();
-    if (tab === 'journey') renderJourney();
+    if (tab === 'progress') renderProgress();
     if (tab === 'journal') renderJournal();
     if (tab === 'support') renderSupport();
     $(`#screen-${tab}`).scrollTop = 0;
@@ -1203,7 +1142,7 @@
 
   function refreshAll() {
     renderToday();
-    if (currentTab === 'journey') renderJourney();
+    if (currentTab === 'progress') renderProgress();
     if (currentTab === 'journal') renderJournal();
   }
 
@@ -1263,12 +1202,12 @@
       <label class="field"><span>What is it?</span><input id="goalName" value="${esc(state.settings.goalName)}" placeholder="New truck tires, a trip…"></label>
       <label class="field"><span>Cost ($)</span><input id="goalAmount" type="number" inputmode="decimal" min="0" value="${state.settings.goalAmount || ''}" placeholder="600"></label>
       <button class="btn primary block" style="margin-top:14px" data-action="saveGoal">Save</button>`),
-    saveGoal: () => { state.settings.goalName = $('#goalName').value.trim(); state.settings.goalAmount = parseFloat($('#goalAmount').value) || 0; save(); closeSheet(); renderJourney(); },
+    saveGoal: () => { state.settings.goalName = $('#goalName').value.trim(); state.settings.goalAmount = parseFloat($('#goalAmount').value) || 0; save(); closeSheet(); renderProgress(); },
     sealLetter: () => {
       const body = $('#letterBody').value.trim();
       if (!body) { toast('Write something first'); return; }
       state.letters.push({ id: uid(), created: todayStr(), unlockDay: Number($('#letterDay').value), title: $('#letterTitle').value.trim(), body });
-      save(); renderJourney('d-letters'); toast('Sealed. See you there.');
+      save(); renderProgress('d-letters'); toast('Sealed. See you there.');
     },
     openLetter: el => {
       const l = state.letters.find(x => x.id === el.dataset.id);
@@ -1283,14 +1222,14 @@
           <button class="btn ghost danger block" style="margin-top:16px" data-action="delLetter" data-id="${l.id}">Delete letter</button>`);
       }
     },
-    delLetter: el => { if (!confirm('Delete this letter?')) return; state.letters = state.letters.filter(l => l.id !== el.dataset.id); save(); closeSheet(); renderJourney('d-letters'); },
+    delLetter: el => { if (!confirm('Delete this letter?')) return; state.letters = state.letters.filter(l => l.id !== el.dataset.id); save(); closeSheet(); renderProgress('d-letters'); },
     addWin: () => {
       const v = $('#winText').value.trim();
       if (!v) return;
       state.wins.push({ ts: Date.now(), text: v });
-      save(); renderJourney('d-wins'); toast('Nice. That\'s time well spent.');
+      save(); renderProgress('d-wins'); toast('Nice. That\'s time well spent.');
     },
-    delWin: el => { state.wins.splice(Number(el.dataset.i), 1); save(); renderJourney('d-wins'); },
+    delWin: el => { state.wins.splice(Number(el.dataset.i), 1); save(); renderProgress('d-wins'); },
     addSlip: () => {
       const d = $('#slipDate').value;
       if (!d || state.slips.includes(d)) return;

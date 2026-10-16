@@ -3,9 +3,9 @@
 Every sober day drops a bottle on the pile. A phone web app (PWA) that shows the whiskey you didn't drink, plus tools for staying sober.
 
 ## Features
-- **Today**: one hand-drawn physics bottle per sober day lands on a bar counter, labeled with its day number, with waving cartoon hands and motion lines. Tap a bottle to see that day's journal entry; drag to toss. After 140 bottles, older ones pack into cases of 12. Money saved, volume not consumed, hours reclaimed and the next milestone sit underneath.
+- **Today**: one frosted-glass physics bottle per sober day drops into a lit display case. Tap a bottle to see that day's journal entry; drag to toss. After 140 bottles, older ones pack into cases of 12. Money saved, alcohol avoided and the next milestone sit underneath.
 - **Liquid view**: the same total as liquid filling a pot, bucket, keg, bathtub, oil drum and hot tub.
-- **Journey**: streak, money, gallons, standard drinks, calories, hours reclaimed, savings goal, milestone badges, a body-recovery timeline, and progress toward the ~1,095 bottles from the drinking years.
+- **Progress**: streak, money, gallons, standard drinks, calories, hours reclaimed, savings goal, milestone badges, a body-recovery timeline, and progress toward the ~1,095 bottles from the drinking years.
 - **Support**: craving mode, call buttons, your why, and craving patterns.
 - **Craving mode**: 15-minute countdown with a breathing guide, your "why", your "play the tape forward" note, a good-day journal entry, and one-tap calls to your support person, SAMHSA (1-800-662-4357) or 988.
 - **Craving log and patterns**: intensity, triggers and place, with time-of-day and trigger breakdowns.

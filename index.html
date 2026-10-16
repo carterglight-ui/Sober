@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#fbf7ef">
-  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#121514">
+  <meta name="color-scheme" content="dark">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Sober Pile">
   <meta name="description" content="Every sober day drops a bottle on the pile.">
   <link rel="manifest" href="manifest.webmanifest">
@@ -25,52 +25,60 @@
       <!-- TODAY -->
       <section id="screen-today" class="screen active" data-screen="today">
         <header class="top-bar">
-          <span class="kicker">Your progress</span>
+          <span class="kicker">Today</span>
           <button class="gear" data-action="settings" aria-label="Settings">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>
           </button>
         </header>
         <div class="headline">
-          <h1><span id="dayCount">0</span> <span id="dayWord">days</span> sober</h1>
-          <p id="subline">One day at a time.</p>
+          <div class="big-num" id="dayCount">0</div>
+          <div class="headline-text">
+            <h1><span id="dayWord">days</span><br>alcohol-free</h1>
+            <p id="subline">Look how far you've come.</p>
+          </div>
         </div>
 
         <div class="stage" id="stage">
           <canvas id="pileCanvas" aria-label="Pile of bottles you didn't drink"></canvas>
           <div id="liquidView" class="liquid-view" hidden></div>
-          <div class="seg" role="tablist">
-            <button class="on" data-action="view" data-view="bottles">Bottles</button>
-            <button data-action="view" data-view="liquid">Liquid</button>
+          <div class="stage-top">
+            <span class="pill-label">Your pile</span>
+            <div class="seg" role="tablist">
+              <button class="on" data-action="view" data-view="bottles"><svg viewBox="0 0 24 24"><path d="M12 2.5l8.5 4.75v9.5L12 21.5l-8.5-4.75v-9.5z"/><path d="M3.5 7.25L12 12l8.5-4.75M12 12v9.5"/></svg>3D view</button>
+              <button data-action="view" data-view="liquid"><svg viewBox="0 0 24 24"><path d="M12 3s6 6.6 6 11a6 6 0 01-12 0c0-4.4 6-11 6-11z"/></svg>Liquid view</button>
+            </div>
           </div>
           <div class="stage-caption">
-            <b id="captionMain">0 bottles you didn't drink</b>
-            <span id="captionSub">Tap a bottle to revisit that day.</span>
+            <b id="captionMain">0 bottles left behind</b>
+            <span id="captionSub">A little more freedom. Every day.</span>
           </div>
         </div>
 
-        <div class="stats-row">
-          <div><b id="qsMoney">$0</b><span>Saved</span></div>
-          <div><b id="qsVolume">0 L</b><span>Not consumed</span></div>
-          <div><b id="qsTime">0 hrs</b><span>Reclaimed</span></div>
+        <div class="stat-cards">
+          <div class="stat-card">
+            <svg viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 015.5 5H17v3"/><path d="M3 7.5V18a2 2 0 002 2h14a2 2 0 002-2V10a2 2 0 00-2-2H5.5A2.5 2.5 0 013 5.5"/><path d="M16 14h2"/></svg>
+            <div><b id="qsMoney">$0</b><span>Money saved</span></div>
+          </div>
+          <div class="stat-card">
+            <svg viewBox="0 0 24 24"><path d="M12 3s6 6.6 6 11a6 6 0 01-12 0c0-4.4 6-11 6-11z"/></svg>
+            <div><b id="qsVolume">0 L</b><span>Alcohol avoided</span></div>
+          </div>
         </div>
         <p class="basis"><span id="basisText"></span> · <button class="link" data-action="settings">Edit</button></p>
 
-        <button class="milestone" data-action="tab" data-tab="journey">
+        <button class="milestone" data-action="tab" data-tab="progress">
           <div class="ms-top"><span id="msLabel">Next milestone</span><span id="msCount" class="num"></span></div>
           <div class="bar"><i id="msBar"></i></div>
         </button>
 
-        <button class="btn primary big" data-action="checkin">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
-          <span id="checkinLabel">How are you feeling today?</span>
+        <button class="btn primary big cta" data-action="checkin">
+          <span id="checkinLabel">Check in for today</span>
+          <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </button>
-        <button class="btn outline big" data-action="craving">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M10 9v6M14 9v6"/></svg>
-          <span>Having a craving? Let's pause.</span>
-        </button>
+        <p class="breath-link"><button class="link plain" data-action="craving">Need a moment? Start a breathing break</button></p>
       </section>
 
-      <section id="screen-journey" class="screen" data-screen="journey"></section>
+      <section id="screen-progress" class="screen" data-screen="progress"></section>
       <section id="screen-journal" class="screen" data-screen="journal"></section>
       <section id="screen-support" class="screen" data-screen="support"></section>
     </main>
@@ -79,11 +87,11 @@
       <button class="tab on" data-action="tab" data-tab="today">
         <svg viewBox="0 0 24 24"><path class="fillable" d="M3 11l9-7 9 7v9a1 1 0 01-1 1h-5v-6h-6v6H4a1 1 0 01-1-1z"/></svg><span>Today</span>
       </button>
-      <button class="tab" data-action="tab" data-tab="journey">
-        <svg viewBox="0 0 24 24"><circle cx="6" cy="18" r="2.2"/><path d="M8 18h5a3 3 0 000-6H11a3 3 0 010-6h1"/><path class="fillable" d="M18 2.5a3.5 3.5 0 013.5 3.5c0 2.6-3.5 6-3.5 6s-3.5-3.4-3.5-6A3.5 3.5 0 0118 2.5z"/></svg><span>Journey</span>
+      <button class="tab" data-action="tab" data-tab="progress">
+        <svg viewBox="0 0 24 24"><path d="M6 20V13M12 20V5M18 20v-9"/></svg><span>Progress</span>
       </button>
       <button class="tab" data-action="tab" data-tab="journal">
-        <svg viewBox="0 0 24 24"><path class="fillable" d="M2 5.5C4.5 4 8.5 4 12 6c3.5-2 7.5-2 10-.5V19c-2.5-1.5-6.5-1.5-10 .5-3.5-2-7.5-2-10-.5z"/><path d="M12 6v13.5"/></svg><span>Journal</span>
+        <svg viewBox="0 0 24 24"><rect class="fillable" x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg><span>Journal</span>
       </button>
       <button class="tab" data-action="tab" data-tab="support">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="2.8"/><circle cx="5" cy="9" r="2.2"/><circle cx="19" cy="9" r="2.2"/><path class="fillable" d="M7 20v-1.5a5 5 0 0110 0V20z"/><path d="M1.5 19v-.8A3.6 3.6 0 015 14.6M22.5 19v-.8a3.6 3.6 0 00-3.5-3.6"/></svg><span>Support</span>
