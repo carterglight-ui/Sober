@@ -4,7 +4,7 @@
   /* =========================================================
      State
      ========================================================= */
-  const APP_VERSION = '1.17';
+  const APP_VERSION = '1.18';
   const STORE_KEY = 'soberpile.v1';
   const DEFAULT_STATE = {
     settings: {
@@ -239,7 +239,23 @@
     tall: { neckW: 0.26, neckH: 0.36, shoulder: 0.2, r: 0.12, square: false, dims: [0.86, 1.12] },
   };
   const SHAPE_KEYS = Object.keys(BOTTLE_SHAPES);
-  const LIGHT = { x: 9, y: 7 };  // shadow offset: sunlight from the upper left
+  const LIGHT = { x: 3, y: 8 };  // shadow offset: warm bar lamps behind and above
+
+  // Bar photo behind the pile. The bottles rest on the wooden counter in the foreground,
+  // BAR_EDGE of the way down the photo.
+  const BAR = new Image();
+  BAR.src = 'assets/bar.jpg';
+  const BAR_EDGE = 0.79;
+  const barReady = () => BAR.complete && BAR.naturalWidth > 0;
+  // cover the stage so the counter line lands on the floor line
+  function drawBar(c, W, H, fy) {
+    const iw = BAR.naturalWidth, ih = BAR.naturalHeight;
+    const s = Math.max(W / iw, fy / (BAR_EDGE * ih), H / ih);
+    const dw = iw * s, dh = ih * s;
+    let y = fy - BAR_EDGE * ih * s;
+    y = Math.min(0, Math.max(y, H - dh));
+    c.drawImage(BAR, (W - dw) / 2, y, dw, dh);
+  }
 
   // Photographic whiskey bottle used for every bottle in the pile (falls back to drawn bottles).
   const PHOTO = new Image();
@@ -970,9 +986,16 @@
       canvas.pixelRatio = dpr;
       Sprites.clear();
       if (W > 10 && H > 10) {
-        wallCv = offscreen(W, H, c => drawWall(c, W, H, floorY));
-        ledgeCv = offscreen(W, H - floorY, c => drawLedge(c, W, H - floorY));
-        vigCv = offscreen(W, H, c => drawVignette(c, W, H));
+        if (barReady()) {
+          // the photo already has its counter and vignette
+          wallCv = offscreen(W, H, c => drawBar(c, W, H, floorY));
+          ledgeCv = null;
+          vigCv = null;
+        } else {
+          wallCv = offscreen(W, H, c => drawWall(c, W, H, floorY));
+          ledgeCv = offscreen(W, H - floorY, c => drawLedge(c, W, H - floorY));
+          vigCv = offscreen(W, H, c => drawVignette(c, W, H));
+        }
       }
     }
 
@@ -2000,8 +2023,13 @@
     Pile.init($('#pileCanvas'));
     showTab('today');
   }
-  if (photoReady()) boot();
-  else { PHOTO.onload = boot; PHOTO.onerror = boot; setTimeout(boot, 2500); }
+  let waiting = 2;
+  const ready = () => { if (--waiting <= 0) boot(); };
+  [PHOTO, BAR].forEach(im => {
+    if (im.complete && im.naturalWidth) ready();
+    else { im.onload = ready; im.onerror = ready; }
+  });
+  setTimeout(boot, 3000);
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     // Check for a new version every time the app comes to the front, and reload once when it lands.
