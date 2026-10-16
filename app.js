@@ -4,7 +4,7 @@
   /* =========================================================
      State
      ========================================================= */
-  const APP_VERSION = '1.20';
+  const APP_VERSION = '1.21';
   const STORE_KEY = 'soberpile.v1';
   const DEFAULT_STATE = {
     settings: {
@@ -127,47 +127,20 @@
   const LIQUIDS = [
     // art: a photo of the container. clear = see-through, so whiskey is drawn inside `poly`
     // (normalised to the image, liquid from `bottom` up to `top`); otherwise a fill line is drawn on it.
-    {
-      id: 'shot', one: 'shot', many: 'shots', L: SHOT_L, note: '1.5 oz',
-      art: {
-        src: 'assets/c-shot.png', clear: true, top: 0.17, bottom: 0.74,
-        poly: [[0.055, 0.155], [0.083, 0.363], [0.125, 0.552], [0.198, 0.661], [0.307, 0.722], [0.509, 0.74], [0.708, 0.722], [0.817, 0.661], [0.89, 0.552], [0.932, 0.363], [0.95, 0.155]],
-      },
-    },
-    {
-      id: 'soda', one: '2-liter soda', many: '2-liter sodas', L: 2,
-      art: {
-        src: 'assets/c-soda.png', clear: true, top: 0.14, bottom: 0.97,
-        poly: [[0.304, 0.136], [0.186, 0.182], [0.106, 0.227], [0.05, 0.273], [0.031, 0.318], [0.025, 0.864], [0.05, 0.909], [0.106, 0.955], [0.161, 0.977],
-          [0.832, 0.977], [0.888, 0.955], [0.944, 0.909], [0.969, 0.864], [0.969, 0.318], [0.944, 0.273], [0.888, 0.227], [0.801, 0.182], [0.683, 0.136]],
-      },
-    },
-    {
-      id: 'jug', one: 'gallon jug', many: 'gallon jugs', L: GAL,
-      art: {
-        src: 'assets/c-jug.png', clear: true, top: 0.165, bottom: 0.93,
-        poly: [[0.305, 0.156], [0.242, 0.189], [0.182, 0.221], [0.126, 0.254], [0.082, 0.286], [0.052, 0.318], [0.034, 0.351], [0.021, 0.383], [0.016, 0.448], [0.015, 0.562], [0.016, 0.805], [0.030, 0.870], [0.056, 0.902], [0.113, 0.934], [0.258, 0.963], [0.500, 0.975], [0.745, 0.963], [0.891, 0.934], [0.947, 0.902], [0.970, 0.870], [0.982, 0.805], [0.985, 0.643], [0.979, 0.513], [0.975, 0.481], [0.765, 0.448], [0.749, 0.416], [0.737, 0.383], [0.725, 0.351], [0.713, 0.318], [0.701, 0.286], [0.702, 0.254], [0.771, 0.221], [0.776, 0.189], [0.679, 0.156]],
-      },
-    },
-    { id: 'keg', one: 'beer keg', many: 'beer kegs', L: 15.5 * GAL, note: '15.5 gallon', art: { src: 'assets/c-keg.png', clear: false, top: 0.13, bottom: 0.95 } },
-    { id: 'drum', one: 'oil drum', many: 'oil drums', L: 55 * GAL, note: '55 gallon', art: { src: 'assets/c-drum.png', clear: false, top: 0.1, bottom: 0.96 } },
-    {
-      id: 'hottub', one: 'hot tub', many: 'hot tubs', L: 500 * GAL, note: '500 gallon',
-      art: {
-        src: 'assets/c-hottub.png', clear: true, top: 0.03, bottom: 0.5,
-        poly: [[0.068, 0.225], [0.188, 0.093], [0.393, 0.027], [0.620, 0.027], [0.825, 0.103], [0.942, 0.225], [0.935, 0.337], [0.648, 0.489], [0.379, 0.499], [0.075, 0.327]],
-      },
-    },
+    // full/empty: photos of the same container, full and empty. The full one shows below the waterline.
+    { id: 'shot', one: 'shot', many: 'shots', L: SHOT_L, note: '1.5 oz', art: { src: 'assets/c-shot-empty.png', full: 'assets/c-shot-full.png', top: 0.22, bottom: 0.77 } },
+    { id: 'soda', one: '2-liter soda', many: '2-liter sodas', L: 2, art: { src: 'assets/c-soda-empty.png', full: 'assets/c-soda-full.png', top: 0.136, bottom: 0.99 } },
+    { id: 'jug', one: 'gallon jug', many: 'gallon jugs', L: GAL, art: { src: 'assets/c-jug-empty.png', full: 'assets/c-jug-full.png', top: 0.153, bottom: 0.99 } },
+    { id: 'keg', one: 'beer keg', many: 'beer kegs', L: 15.5 * GAL, note: '15.5 gallon', art: { src: 'assets/c-keg.png', clear: false, top: 0.12, bottom: 0.95 } },
+    { id: 'drum', one: 'oil drum', many: 'oil drums', L: 55 * GAL, note: '55 gallon', art: { src: 'assets/c-drum.png', clear: false, top: 0.1, bottom: 0.97 } },
+    // liquid: just the whiskey from the full photo, laid over the dry basin and drawn down as it empties
+    { id: 'hottub', one: 'hot tub', many: 'hot tubs', L: 500 * GAL, note: '500 gallon', art: { src: 'assets/c-hottub-empty.png', liquid: 'assets/c-hottub-liquid.png' } },
     {
       id: 'pool', one: 'backyard pool', many: 'backyard pools', L: 2000 * GAL, note: '2,000 gallon',
       // open basin seen from above: the whiskey is an ellipse rising from the floor to the rim
       art: { src: 'assets/c-pool.png', basin: { cx: 0.502, cy: 0.389, rx: 0.471, ry: 0.236, depth: 0.184 } },
     },
-    {
-      id: 'olympic', one: 'Olympic pool', many: 'Olympic pools', L: 660000 * GAL, note: '660,000 gallon',
-      // rectangular basin in perspective: the surface rises from the floor outline to the rim outline
-      art: { src: 'assets/c-olympic.png', quad: { rim: [[0.246, 0.053], [0.754, 0.053], [0.94, 0.832], [0.061, 0.832]], floor: [[0.251, 0.137], [0.749, 0.137], [0.913, 0.832], [0.089, 0.832]] } },
-    },
+    { id: 'olympic', one: 'Olympic pool', many: 'Olympic pools', L: 660000 * GAL, note: '660,000 gallon', art: { src: 'assets/c-olympic-empty.png', liquid: 'assets/c-olympic-liquid.png' } },
   ];
 
   const TIMELINE = [
@@ -724,6 +697,33 @@
 
   // One container at (x, y, w, h), holding `frac` of its volume.
   function drawContainer(c, img, art, x, y, w, h, frac) {
+    const layer = art.full || art.liquid ? artImage({ src: art.full || art.liquid }) : null;
+    if (art.full && layer) {
+      // empty glass on top half, real whiskey photo below the waterline
+      const shown = frac > 0 ? Math.max(frac, 0.02) : 0;
+      const lvl = y + h * (art.bottom - (art.bottom - art.top) * shown);
+      c.drawImage(img, x, y, w, h);
+      c.save();
+      c.beginPath();
+      c.rect(x - 2, lvl, w + 4, y + h - lvl + 2);
+      c.clip();
+      c.drawImage(layer, x, y, w, h);
+      c.restore();
+      return;
+    }
+    if (art.liquid && layer) {
+      // dry basin, then the whiskey: shallower water shows less of the walls and lets the basin through
+      const d = Math.min(1, Math.max(frac, 0));
+      const k = 0.9 + 0.1 * d;
+      c.drawImage(img, x, y, w, h);
+      c.save();
+      c.globalAlpha = 0.3 + 0.7 * Math.min(1, d * 6);
+      c.translate(x + w / 2, y + h * (0.55 + 0.45 * (1 - d) * 0.15));
+      c.scale(k, k);
+      c.drawImage(layer, -w / 2, -h * 0.55, w, h);
+      c.restore();
+      return;
+    }
     // a tiny amount still shows as a visible film
     const shown = frac > 0 ? Math.max(frac, 0.025) : 0;
     const lvl = y + h * (art.bottom - (art.bottom - art.top) * shown);
@@ -1290,8 +1290,10 @@
     function drawLiquid() {
       if (!liquid) return;
       const { pick, ratio } = liquid;
-      const img = pick.art ? artImage(pick.art, () => { liquidKey = ''; }) : null;
-      const key = [pick.id, ratio.toFixed(4), W, H, dpr, !!img].join('|');
+      const reset = () => { liquidKey = ''; };
+      const img = pick.art ? artImage(pick.art, reset) : null;
+      const extra = pick.art && (pick.art.full || pick.art.liquid) ? artImage({ src: pick.art.full || pick.art.liquid }, reset) : true;
+      const key = [pick.id, ratio.toFixed(4), W, H, dpr, !!img, !!extra].join('|');
       if (key !== liquidKey) {
         liquidCv = offscreen(W, H, c => {
           if (img) drawContainers(c, W, H, floorY, img, pick.art, ratio);
