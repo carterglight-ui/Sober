@@ -1,4 +1,4 @@
-const CACHE = 'sober-pile-v14';
+const CACHE = 'sober-pile-v15';
 const ASSETS = [
   './',
   'index.html',

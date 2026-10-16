@@ -4,7 +4,7 @@
   /* =========================================================
      State
      ========================================================= */
-  const APP_VERSION = '1.14';
+  const APP_VERSION = '1.15';
   const STORE_KEY = 'soberpile.v1';
   const DEFAULT_STATE = {
     settings: {
@@ -144,16 +144,16 @@
       },
     },
     { id: 'keg', one: 'beer keg', many: 'beer kegs', L: 58.7, art: { src: 'assets/c-keg.png', clear: false, top: 0.13, bottom: 0.95 } },
-    { id: 'drum', one: 'oil drum', many: 'oil drums', L: 208, art: { src: 'assets/c-drum.png', clear: false, top: 0.1, bottom: 0.96 } },
+    { id: 'drum', one: 'oil drum', many: 'oil drums', L: 208.2, note: '55 gallon', art: { src: 'assets/c-drum.png', clear: false, top: 0.1, bottom: 0.96 } },
     {
-      id: 'hottub', one: 'hot tub', many: 'hot tubs', L: 1500,
+      id: 'hottub', one: 'hot tub', many: 'hot tubs', L: 1892.7, note: '500 gallon',
       art: {
         src: 'assets/c-hottub.png', clear: true, top: 0.03, bottom: 0.5,
         poly: [[0.068, 0.225], [0.188, 0.093], [0.393, 0.027], [0.620, 0.027], [0.825, 0.103], [0.942, 0.225], [0.935, 0.337], [0.648, 0.489], [0.379, 0.499], [0.075, 0.327]],
       },
     },
     {
-      id: 'pool', one: 'backyard pool', many: 'backyard pools', L: 50000,
+      id: 'pool', one: 'backyard pool', many: 'backyard pools', L: 7570.8, note: '2,000 gallon',
       // open basin seen from above: the whiskey is an ellipse rising from the floor to the rim
       art: { src: 'assets/c-pool.png', basin: { cx: 0.502, cy: 0.389, rx: 0.471, ry: 0.236, depth: 0.184 } },
     },
