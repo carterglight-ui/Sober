@@ -4,7 +4,7 @@
   /* =========================================================
      State
      ========================================================= */
-  const APP_VERSION = '1.15';
+  const APP_VERSION = '1.16';
   const STORE_KEY = 'soberpile.v1';
   const DEFAULT_STATE = {
     settings: {
@@ -111,7 +111,8 @@
   }
 
   function volumeText(c, digits = 2) {
-    return state.settings.units === 'us' ? `${c.gallons.toFixed(digits)} gal` : `${c.liters.toFixed(digits)} L`;
+    const fmt = v => (v >= 100 ? int(v) : v.toFixed(digits));
+    return state.settings.units === 'us' ? `${fmt(c.gallons)} gal` : `${fmt(c.liters)} L`;
   }
 
   const MILESTONES = [1, 3, 7, 14, 30, 60, 90, 180, 365, 500, 730, 1000, 1095, 1461];
@@ -137,13 +138,13 @@
       },
     },
     {
-      id: 'jug', one: 'gallon jug', many: 'gallon jugs', L: 3.785,
+      id: 'jug', one: 'gallon jug', many: 'gallon jugs', L: 3.78541,
       art: {
         src: 'assets/c-jug.png', clear: true, top: 0.165, bottom: 0.93,
         poly: [[0.305, 0.156], [0.242, 0.189], [0.182, 0.221], [0.126, 0.254], [0.082, 0.286], [0.052, 0.318], [0.034, 0.351], [0.021, 0.383], [0.016, 0.448], [0.015, 0.562], [0.016, 0.805], [0.030, 0.870], [0.056, 0.902], [0.113, 0.934], [0.258, 0.963], [0.500, 0.975], [0.745, 0.963], [0.891, 0.934], [0.947, 0.902], [0.970, 0.870], [0.982, 0.805], [0.985, 0.643], [0.979, 0.513], [0.975, 0.481], [0.765, 0.448], [0.749, 0.416], [0.737, 0.383], [0.725, 0.351], [0.713, 0.318], [0.701, 0.286], [0.702, 0.254], [0.771, 0.221], [0.776, 0.189], [0.679, 0.156]],
       },
     },
-    { id: 'keg', one: 'beer keg', many: 'beer kegs', L: 58.7, art: { src: 'assets/c-keg.png', clear: false, top: 0.13, bottom: 0.95 } },
+    { id: 'keg', one: 'beer keg', many: 'beer kegs', L: 58.67, note: '15.5 gallon', art: { src: 'assets/c-keg.png', clear: false, top: 0.13, bottom: 0.95 } },
     { id: 'drum', one: 'oil drum', many: 'oil drums', L: 208.2, note: '55 gallon', art: { src: 'assets/c-drum.png', clear: false, top: 0.1, bottom: 0.96 } },
     {
       id: 'hottub', one: 'hot tub', many: 'hot tubs', L: 1892.7, note: '500 gallon',
@@ -157,7 +158,11 @@
       // open basin seen from above: the whiskey is an ellipse rising from the floor to the rim
       art: { src: 'assets/c-pool.png', basin: { cx: 0.502, cy: 0.389, rx: 0.471, ry: 0.236, depth: 0.184 } },
     },
-    { id: 'olympic', one: 'Olympic pool', many: 'Olympic pools', L: 2500000 },
+    {
+      id: 'olympic', one: 'Olympic pool', many: 'Olympic pools', L: 2498370, note: '660,000 gallon',
+      // rectangular basin in perspective: the surface rises from the floor outline to the rim outline
+      art: { src: 'assets/c-olympic.png', quad: { rim: [[0.246, 0.053], [0.754, 0.053], [0.94, 0.832], [0.061, 0.832]], floor: [[0.251, 0.137], [0.749, 0.137], [0.913, 0.832], [0.089, 0.832]] } },
+    },
   ];
   const SHOT_ML = 50;
 
@@ -700,7 +705,30 @@
     // a tiny amount still shows as a visible film
     const shown = frac > 0 ? Math.max(frac, 0.025) : 0;
     const lvl = y + h * (art.bottom - (art.bottom - art.top) * shown);
-    if (art.basin) {
+    if (art.quad) {
+      const d = Math.min(1, shown), q = art.quad;
+      const P = ([px, py]) => [x + px * w, y + py * h];
+      const surf = q.floor.map((f, i) => { const r = q.rim[i]; return P([f[0] + (r[0] - f[0]) * d, f[1] + (r[1] - f[1]) * d]); });
+      c.drawImage(img, x, y, w, h);
+      c.save();
+      c.beginPath();
+      q.rim.map(P).forEach(([px, py], i) => (i ? c.lineTo : c.moveTo).call(c, px, py));
+      c.closePath();
+      c.clip();
+      const g = c.createLinearGradient(0, surf[0][1], 0, surf[2][1]);
+      g.addColorStop(0, '#7a3c0a'); g.addColorStop(0.55, '#b8691c'); g.addColorStop(1, '#d99036');
+      c.globalAlpha = 0.55 + 0.4 * Math.min(1, d * 8);
+      c.fillStyle = g;
+      c.beginPath();
+      surf.forEach(([px, py], i) => (i ? c.lineTo : c.moveTo).call(c, px, py));
+      c.closePath();
+      c.fill();
+      c.globalAlpha = 0.5;
+      c.strokeStyle = 'rgba(255,220,150,0.7)';
+      c.lineWidth = Math.max(1, w * 0.003);
+      c.stroke();
+      c.restore();
+    } else if (art.basin) {
       const b = art.basin, d = Math.min(1, shown);
       const cx = x + b.cx * w, rx = b.rx * w, ry = b.ry * h;
       const sy = y + (b.cy + b.depth * (1 - d)) * h;
