@@ -4,7 +4,7 @@
   /* =========================================================
      State
      ========================================================= */
-  const APP_VERSION = '1.10';
+  const APP_VERSION = '1.11';
   const STORE_KEY = 'soberpile.v1';
   const DEFAULT_STATE = {
     settings: {
@@ -138,11 +138,17 @@
           [0.832, 0.977], [0.888, 0.955], [0.944, 0.909], [0.969, 0.864], [0.969, 0.318], [0.944, 0.273], [0.888, 0.227], [0.801, 0.182], [0.683, 0.136]],
       },
     },
-    { id: 'jug', one: 'gallon jug', many: 'gallon jugs', L: 3.785 },
+    {
+      id: 'jug', one: 'gallon jug', many: 'gallon jugs', L: 3.785,
+      art: {
+        src: 'assets/c-jug.png', clear: true, top: 0.165, bottom: 0.93,
+        poly: [[0.305, 0.156], [0.242, 0.189], [0.182, 0.221], [0.126, 0.254], [0.082, 0.286], [0.052, 0.318], [0.034, 0.351], [0.021, 0.383], [0.016, 0.448], [0.015, 0.562], [0.016, 0.805], [0.030, 0.870], [0.056, 0.902], [0.113, 0.934], [0.258, 0.963], [0.500, 0.975], [0.745, 0.963], [0.891, 0.934], [0.947, 0.902], [0.970, 0.870], [0.982, 0.805], [0.985, 0.643], [0.979, 0.513], [0.975, 0.481], [0.765, 0.448], [0.749, 0.416], [0.737, 0.383], [0.725, 0.351], [0.713, 0.318], [0.701, 0.286], [0.702, 0.254], [0.771, 0.221], [0.776, 0.189], [0.679, 0.156]],
+      },
+    },
     { id: 'pot', one: 'kitchen pot', many: 'kitchen pots', L: 7.6 },
     { id: 'bucket', one: '5-gallon bucket', many: '5-gallon buckets', L: 18.9 },
     { id: 'gas', one: 'car gas tank', many: 'car gas tanks', L: 55 },
-    { id: 'keg', one: 'beer keg', many: 'beer kegs', L: 58.7 },
+    { id: 'keg', one: 'beer keg', many: 'beer kegs', L: 58.7, art: { src: 'assets/c-keg.png', clear: false, top: 0.13, bottom: 0.95 } },
     { id: 'tank', one: 'fish tank', many: 'fish tanks', L: 75.7, note: '20 gallon' },
     { id: 'bathtub', one: 'bathtub', many: 'bathtubs', L: 150 },
     { id: 'drum', one: 'oil drum', many: 'oil drums', L: 208 },
