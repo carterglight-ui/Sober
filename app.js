@@ -4,7 +4,7 @@
   /* =========================================================
      State
      ========================================================= */
-  const APP_VERSION = '1.13';
+  const APP_VERSION = '1.14';
   const STORE_KEY = 'soberpile.v1';
   const DEFAULT_STATE = {
     settings: {
@@ -144,7 +144,7 @@
       },
     },
     { id: 'keg', one: 'beer keg', many: 'beer kegs', L: 58.7, art: { src: 'assets/c-keg.png', clear: false, top: 0.13, bottom: 0.95 } },
-    { id: 'drum', one: 'oil drum', many: 'oil drums', L: 208 },
+    { id: 'drum', one: 'oil drum', many: 'oil drums', L: 208, art: { src: 'assets/c-drum.png', clear: false, top: 0.1, bottom: 0.96 } },
     {
       id: 'hottub', one: 'hot tub', many: 'hot tubs', L: 1500,
       art: {
@@ -749,7 +749,7 @@
       c.drawImage(img, x, y, w, h);
     } else {
       // solid container: faded above the level, full colour below, amber line at the level
-      c.globalAlpha = 0.3;
+      c.globalAlpha = 0.5;
       c.drawImage(img, x, y, w, h);
       c.globalAlpha = 1;
       c.save();
