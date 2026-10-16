@@ -4,7 +4,7 @@
   /* =========================================================
      State
      ========================================================= */
-  const APP_VERSION = '1.8';
+  const APP_VERSION = '1.9';
   const STORE_KEY = 'soberpile.v1';
   const DEFAULT_STATE = {
     settings: {
@@ -119,8 +119,16 @@
 
   // Containers to compare the whiskey against, smallest to largest. L = liters.
   const LIQUIDS = [
-    { id: 'shot', one: 'shot', many: 'shots', L: 0.05 },
-    { id: 'can', one: 'beer can', many: 'beer cans', L: 0.355 },
+    // art: a photo of the container. clear = see-through, so whiskey is drawn inside `poly`
+    // (normalised to the image, liquid from `bottom` up to `top`); otherwise a fill line is drawn on it.
+    {
+      id: 'shot', one: 'shot', many: 'shots', L: 0.05,
+      art: {
+        src: 'assets/c-shot.png', clear: true, top: 0.17, bottom: 0.74,
+        poly: [[0.055, 0.155], [0.083, 0.363], [0.125, 0.552], [0.198, 0.661], [0.307, 0.722], [0.509, 0.74], [0.708, 0.722], [0.817, 0.661], [0.89, 0.552], [0.932, 0.363], [0.95, 0.155]],
+      },
+    },
+    { id: 'can', one: 'beer can', many: 'beer cans', L: 0.355, art: { src: 'assets/c-can.png', clear: false, top: 0.06, bottom: 0.97 } },
     { id: 'milk', one: 'milk carton', many: 'milk cartons', L: 1.89, note: 'half gallon' },
     { id: 'soda', one: '2-liter soda', many: '2-liter sodas', L: 2 },
     { id: 'jug', one: 'gallon jug', many: 'gallon jugs', L: 3.785 },
@@ -658,6 +666,95 @@
     c.fillRect(0, 0, W, H);
   }
 
+  // Container photos for the liquid view, loaded the first time they're needed.
+  const ART = new Map();
+  function artImage(art, onload) {
+    if (!ART.has(art.src)) {
+      const im = new Image();
+      im.onload = onload;
+      im.src = art.src;
+      ART.set(art.src, im);
+    }
+    const im = ART.get(art.src);
+    return im.complete && im.naturalWidth ? im : null;
+  }
+
+  // One container at (x, y, w, h), holding `frac` of its volume.
+  function drawContainer(c, img, art, x, y, w, h, frac) {
+    const lvl = y + h * (art.bottom - (art.bottom - art.top) * frac);
+    if (art.clear) {
+      c.drawImage(img, x, y, w, h);
+      c.save();
+      c.beginPath();
+      art.poly.forEach(([px, py], i) => (i ? c.lineTo : c.moveTo).call(c, x + px * w, y + py * h));
+      c.closePath();
+      c.clip();
+      const g = c.createLinearGradient(x, 0, x + w, 0);
+      g.addColorStop(0, '#5a2a06'); g.addColorStop(0.25, '#b0641a'); g.addColorStop(0.5, '#e8a547'); g.addColorStop(0.75, '#b0641a'); g.addColorStop(1, '#5a2a06');
+      c.globalAlpha = 0.9;
+      c.fillStyle = g;
+      c.fillRect(x, lvl, w, h);
+      c.globalAlpha = 1;
+      c.fillStyle = 'rgba(255,220,150,0.55)';
+      c.beginPath();
+      c.ellipse(x + w / 2, lvl, w * 0.42, Math.max(1, h * 0.025), 0, 0, Math.PI * 2);
+      c.fill();
+      c.restore();
+      // the glass again, faintly, so its reflections sit on top of the whiskey
+      c.globalAlpha = 0.4;
+      c.drawImage(img, x, y, w, h);
+      c.globalAlpha = 1;
+    } else if (frac >= 0.999) {
+      c.drawImage(img, x, y, w, h);
+    } else {
+      // solid container: faded above the level, full colour below, amber line at the level
+      c.globalAlpha = 0.3;
+      c.drawImage(img, x, y, w, h);
+      c.globalAlpha = 1;
+      c.save();
+      c.beginPath();
+      c.rect(x - 2, lvl, w + 4, y + h - lvl + 2);
+      c.clip();
+      c.drawImage(img, x, y, w, h);
+      c.restore();
+      c.fillStyle = '#e8a547';
+      c.fillRect(x - w * 0.06, lvl - 1, w * 1.12, 2.5);
+    }
+  }
+
+  // Lay out as many containers as the whiskey fills, last one partly full, stacked on the ledge.
+  function drawContainers(c, W, H, fy, img, art, ratio) {
+    const n = ratio >= 1 ? Math.ceil(ratio - 1e-9) : 1;
+    const shown = Math.min(n, 1500);
+    const lastFrac = ratio >= 1 ? (ratio - Math.floor(ratio + 1e-9)) || 1 : ratio;
+    const aspect = img.naturalWidth / img.naturalHeight;
+    const areaW = W * 0.9, areaH = fy - H * 0.38, gapK = 0.06;
+    let best = { h: 0, rows: 1, cols: 1 };
+    for (let rows = 1; rows <= shown; rows++) {
+      const cols = Math.ceil(shown / rows);
+      const h = Math.min(areaH / rows, areaW / (cols * aspect * (1 + gapK)));
+      if (h > best.h) best = { h, rows, cols };
+      if (areaH / rows < best.h) break;
+    }
+    const h = Math.min(best.h, fy - H * 0.42), w = h * aspect, gap = w * gapK;
+    c.save();
+    c.shadowColor = 'rgba(30,16,4,0.45)';
+    c.shadowBlur = Math.max(4, w * 0.12);
+    c.shadowOffsetX = Math.max(2, w * 0.08);
+    c.shadowOffsetY = 2;
+    let i = 0;
+    for (let r = 0; r < best.rows && i < shown; r++) {
+      const inRow = Math.min(best.cols, shown - i);
+      const rowW = inRow * w + (inRow - 1) * gap;
+      const y = fy - (r + 1) * h;
+      for (let k = 0; k < inRow; k++, i++) {
+        const x = W / 2 - rowW / 2 + k * (w + gap);
+        drawContainer(c, img, art, x, y, w, h, i === shown - 1 ? lastFrac : 1);
+      }
+    }
+    c.restore();
+  }
+
   // A big glass jar on the ledge, filled to pct, for the liquid view.
   function drawJar(c, W, H, fy, pct) {
     const jh = Math.max(60, fy - H * 0.5), jw = Math.min(W * 0.5, 220, jh * 0.85);
@@ -721,7 +818,7 @@
     const M = window.Matter;
     const BASE_W = 38, BASE_H = 100, MAX_LOOSE = 300, CASE_SIZE = 12, FLOOR = 0.8, SCALE = 1.25;
     let engine, runner, canvas, ctx, mouse, W = 0, H = 0, floorY = 0, dpr = 1, walls = [], items = [], gen = 0;
-    let running = false, lastClink = 0, scale = SCALE, built = false, down = null, view = 'bottles', liquidPct = 0;
+    let running = false, lastClink = 0, scale = SCALE, built = false, down = null, view = 'bottles', liquid = null, liquidCv = null, liquidKey = '';
     let wallCv = null, ledgeCv = null, vigCv = null;
     // world size and camera
     let worldW = 0, worldFloor = 0, mound = 0, shrink = 0, zMin = 1, zoom = 1, zoomTarget = 1, snap = true;
@@ -1015,7 +1112,7 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (view === 'liquid') {
         drawLedgeAt(floorY, 1, 0);
-        drawJar(ctx, W, H, floorY, liquidPct);
+        drawLiquid();
         if (vigCv) ctx.drawImage(vigCv, 0, 0, W, H);
         requestAnimationFrame(frame);
         return;
@@ -1086,7 +1183,23 @@
       running = false;
       M.Runner.stop(runner);
     }
-    function setView(v, pct = 0) { view = v; liquidPct = pct; updateZoomBtn(); }
+    function setView(v, spec = null) { view = v; liquid = spec; updateZoomBtn(); }
+
+    // the liquid scene is static, so it's rendered once per selection and reused every frame
+    function drawLiquid() {
+      if (!liquid) return;
+      const { pick, ratio } = liquid;
+      const img = pick.art ? artImage(pick.art, () => { liquidKey = ''; }) : null;
+      const key = [pick.id, ratio.toFixed(4), W, H, dpr, !!img].join('|');
+      if (key !== liquidKey) {
+        liquidCv = offscreen(W, H, c => {
+          if (img) drawContainers(c, W, H, floorY, img, pick.art, ratio);
+          else drawJar(c, W, H, floorY, Math.min(1, ratio));
+        });
+        liquidKey = key;
+      }
+      ctx.drawImage(liquidCv, 0, 0, W, H);
+    }
     function toggleZoom() { zoomTarget = zoomTarget < 0.999 ? 1 : zMin; updateZoomBtn(); }
     const zoomInfo = () => ({ canZoom: zMin < 0.95 && view === 'bottles', out: zoomTarget < 0.999 });
     const size = () => ({ W, H });
@@ -1146,7 +1259,7 @@
 
   function liquidCompare(liters, l) {
     const r = liters / l.L;
-    const n = r >= 100 ? int(r) : r >= 10 ? r.toFixed(0) : r.toFixed(1).replace(/\.0$/, '');
+    const n = r >= 100 ? int(r) : r.toFixed(1).replace(/\.0$/, '');
     if (r >= 1) return { big: `${n} ${r === 1 ? l.one : l.many}`, pct: 1 };
     const pct = r * 100;
     const p = pct < 1 ? String(Number(pct.toPrecision(2))) : pct < 10 ? pct.toFixed(1) : Math.round(pct);
@@ -1158,7 +1271,7 @@
     const auto = LIQUIDS.find(l => l.L > c.liters && l.L >= 7) || LIQUIDS[LIQUIDS.length - 1];
     const pick = LIQUIDS.find(l => l.id === liquidPick) || auto;
     const cmp = liquidCompare(c.liters, pick);
-    Pile.setView('liquid', cmp.pct);
+    Pile.setView('liquid', { pick, ratio: c.liters / pick.L });
     $('#liquidView').innerHTML = `
       <div class="big">${cmp.big}</div>
       <div class="sub">${volumeText(c)} of whiskey${pick.note ? ` · ${pick.note} ${pick.one}` : ''}</div>
