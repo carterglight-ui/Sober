@@ -1,4 +1,4 @@
-const CACHE = 'sober-pile-v6';
+const CACHE = 'sober-pile-v7';
 const ASSETS = [
   './',
   'index.html',
@@ -14,7 +14,7 @@ const ASSETS = [
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -44,7 +44,8 @@ self.addEventListener('fetch', e => {
 
   // App files: network first so updates show up, cache as the offline fallback.
   e.respondWith(
-    fetch(e.request)
+    // no-cache: always ask the server for the latest file instead of the browser's HTTP cache
+    fetch(e.request, { cache: 'no-cache' })
       .then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy));

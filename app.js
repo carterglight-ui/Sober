@@ -4,6 +4,7 @@
   /* =========================================================
      State
      ========================================================= */
+  const APP_VERSION = '1.7';
   const STORE_KEY = 'soberpile.v1';
   const DEFAULT_STATE = {
     settings: {
@@ -1122,7 +1123,7 @@
       </details>
 
       <button class="menu-btn" data-action="settings"><span class="ico">⚙️</span><span class="t"><b>Settings</b><span>Start date, bottle, price, backups</span></span></button>
-      <p class="note" style="text-align:center;margin-top:24px">Sober Pile · one day at a time</p>`;
+      <p class="note" style="text-align:center;margin-top:24px">Sober Pile · version ${APP_VERSION}</p>`;
     if (openId) $('#' + openId).open = true;
   }
 
@@ -1649,6 +1650,16 @@
   else { PHOTO.onload = boot; PHOTO.onerror = boot; setTimeout(boot, 2500); }
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    // Check for a new version every time the app comes to the front, and reload once when it lands.
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloading) return;
+      reloading = true;
+      location.reload();
+    });
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+    }).catch(() => {});
   }
 })();
