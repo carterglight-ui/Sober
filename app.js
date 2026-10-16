@@ -4,7 +4,7 @@
   /* =========================================================
      State
      ========================================================= */
-  const APP_VERSION = '1.11';
+  const APP_VERSION = '1.12';
   const STORE_KEY = 'soberpile.v1';
   const DEFAULT_STATE = {
     settings: {
@@ -128,8 +128,6 @@
         poly: [[0.055, 0.155], [0.083, 0.363], [0.125, 0.552], [0.198, 0.661], [0.307, 0.722], [0.509, 0.74], [0.708, 0.722], [0.817, 0.661], [0.89, 0.552], [0.932, 0.363], [0.95, 0.155]],
       },
     },
-    { id: 'can', one: 'beer can', many: 'beer cans', L: 0.355, art: { src: 'assets/c-can.png', clear: false, top: 0.06, bottom: 0.97 } },
-    { id: 'milk', one: 'milk carton', many: 'milk cartons', L: 1.89, note: 'half gallon' },
     {
       id: 'soda', one: '2-liter soda', many: '2-liter sodas', L: 2,
       art: {
@@ -145,14 +143,15 @@
         poly: [[0.305, 0.156], [0.242, 0.189], [0.182, 0.221], [0.126, 0.254], [0.082, 0.286], [0.052, 0.318], [0.034, 0.351], [0.021, 0.383], [0.016, 0.448], [0.015, 0.562], [0.016, 0.805], [0.030, 0.870], [0.056, 0.902], [0.113, 0.934], [0.258, 0.963], [0.500, 0.975], [0.745, 0.963], [0.891, 0.934], [0.947, 0.902], [0.970, 0.870], [0.982, 0.805], [0.985, 0.643], [0.979, 0.513], [0.975, 0.481], [0.765, 0.448], [0.749, 0.416], [0.737, 0.383], [0.725, 0.351], [0.713, 0.318], [0.701, 0.286], [0.702, 0.254], [0.771, 0.221], [0.776, 0.189], [0.679, 0.156]],
       },
     },
-    { id: 'pot', one: 'kitchen pot', many: 'kitchen pots', L: 7.6 },
-    { id: 'bucket', one: '5-gallon bucket', many: '5-gallon buckets', L: 18.9 },
-    { id: 'gas', one: 'car gas tank', many: 'car gas tanks', L: 55 },
     { id: 'keg', one: 'beer keg', many: 'beer kegs', L: 58.7, art: { src: 'assets/c-keg.png', clear: false, top: 0.13, bottom: 0.95 } },
-    { id: 'tank', one: 'fish tank', many: 'fish tanks', L: 75.7, note: '20 gallon' },
-    { id: 'bathtub', one: 'bathtub', many: 'bathtubs', L: 150 },
     { id: 'drum', one: 'oil drum', many: 'oil drums', L: 208 },
-    { id: 'hottub', one: 'hot tub', many: 'hot tubs', L: 1500 },
+    {
+      id: 'hottub', one: 'hot tub', many: 'hot tubs', L: 1500,
+      art: {
+        src: 'assets/c-hottub.png', clear: true, top: 0.03, bottom: 0.5,
+        poly: [[0.068, 0.225], [0.188, 0.093], [0.393, 0.027], [0.620, 0.027], [0.825, 0.103], [0.942, 0.225], [0.935, 0.337], [0.648, 0.489], [0.379, 0.499], [0.075, 0.327]],
+      },
+    },
     { id: 'pool', one: 'backyard pool', many: 'backyard pools', L: 50000 },
     { id: 'olympic', one: 'Olympic pool', many: 'Olympic pools', L: 2500000 },
   ];
@@ -694,7 +693,9 @@
 
   // One container at (x, y, w, h), holding `frac` of its volume.
   function drawContainer(c, img, art, x, y, w, h, frac) {
-    const lvl = y + h * (art.bottom - (art.bottom - art.top) * frac);
+    // a tiny amount still shows as a visible film
+    const shown = frac > 0 ? Math.max(frac, 0.025) : 0;
+    const lvl = y + h * (art.bottom - (art.bottom - art.top) * shown);
     if (art.clear) {
       c.drawImage(img, x, y, w, h);
       c.save();
@@ -1281,7 +1282,7 @@
 
   function renderLiquid() {
     const c = calc();
-    const auto = LIQUIDS.find(l => l.L > c.liters && l.L >= 7) || LIQUIDS[LIQUIDS.length - 1];
+    const auto = LIQUIDS.find(l => l.L > c.liters) || LIQUIDS[LIQUIDS.length - 1];
     const pick = LIQUIDS.find(l => l.id === liquidPick) || auto;
     const cmp = liquidCompare(c.liters, pick);
     Pile.setView('liquid', { pick, ratio: c.liters / pick.L });
