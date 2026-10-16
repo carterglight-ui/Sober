@@ -4,7 +4,7 @@
   /* =========================================================
      State
      ========================================================= */
-  const APP_VERSION = '1.19';
+  const APP_VERSION = '1.20';
   const STORE_KEY = 'soberpile.v1';
   const DEFAULT_STATE = {
     settings: {
@@ -262,7 +262,7 @@
   // Photographic whiskey bottle used for every bottle in the pile (falls back to drawn bottles).
   const PHOTO = new Image();
   PHOTO.src = 'assets/bottle.png';
-  const PHOTO_RATIO = 171 / 440;
+  const PHOTO_RATIO = 186 / 440;
   const photoReady = () => PHOTO.complete && PHOTO.naturalWidth > 0;
 
   function roundRect(c, x, y, w, h, r) {
@@ -1139,8 +1139,8 @@
           ...opts,
           parts: [
             M.Bodies.rectangle(x, y + h * 0.17, w * 0.97, h * 0.66, { chamfer: { radius: w * 0.1 } }),
-            M.Bodies.rectangle(x, y - h * 0.16, w * 0.62, h * 0.07),
-            M.Bodies.rectangle(x, y - h * 0.34, w * 0.42, h * 0.3, { chamfer: { radius: w * 0.06 } }),
+            M.Bodies.rectangle(x, y - h * 0.19, w * 0.75, h * 0.07, { chamfer: { radius: w * 0.08 } }),
+            M.Bodies.rectangle(x, y - h * 0.36, w * 0.36, h * 0.28, { chamfer: { radius: w * 0.05 } }),
           ],
         });
         off = { x: x - body.position.x, y: y - body.position.y };
