@@ -4,7 +4,7 @@
   /* =========================================================
      State
      ========================================================= */
-  const APP_VERSION = '1.9';
+  const APP_VERSION = '1.10';
   const STORE_KEY = 'soberpile.v1';
   const DEFAULT_STATE = {
     settings: {
@@ -130,7 +130,14 @@
     },
     { id: 'can', one: 'beer can', many: 'beer cans', L: 0.355, art: { src: 'assets/c-can.png', clear: false, top: 0.06, bottom: 0.97 } },
     { id: 'milk', one: 'milk carton', many: 'milk cartons', L: 1.89, note: 'half gallon' },
-    { id: 'soda', one: '2-liter soda', many: '2-liter sodas', L: 2 },
+    {
+      id: 'soda', one: '2-liter soda', many: '2-liter sodas', L: 2,
+      art: {
+        src: 'assets/c-soda.png', clear: true, top: 0.14, bottom: 0.97,
+        poly: [[0.304, 0.136], [0.186, 0.182], [0.106, 0.227], [0.05, 0.273], [0.031, 0.318], [0.025, 0.864], [0.05, 0.909], [0.106, 0.955], [0.161, 0.977],
+          [0.832, 0.977], [0.888, 0.955], [0.944, 0.909], [0.969, 0.864], [0.969, 0.318], [0.944, 0.273], [0.888, 0.227], [0.801, 0.182], [0.683, 0.136]],
+      },
+    },
     { id: 'jug', one: 'gallon jug', many: 'gallon jugs', L: 3.785 },
     { id: 'pot', one: 'kitchen pot', many: 'kitchen pots', L: 7.6 },
     { id: 'bucket', one: '5-gallon bucket', many: '5-gallon buckets', L: 18.9 },
@@ -690,8 +697,8 @@
       c.closePath();
       c.clip();
       const g = c.createLinearGradient(x, 0, x + w, 0);
-      g.addColorStop(0, '#5a2a06'); g.addColorStop(0.25, '#b0641a'); g.addColorStop(0.5, '#e8a547'); g.addColorStop(0.75, '#b0641a'); g.addColorStop(1, '#5a2a06');
-      c.globalAlpha = 0.9;
+      g.addColorStop(0, '#4a2104'); g.addColorStop(0.22, '#9a5212'); g.addColorStop(0.5, '#de9535'); g.addColorStop(0.78, '#9a5212'); g.addColorStop(1, '#4a2104');
+      c.globalAlpha = 0.97;
       c.fillStyle = g;
       c.fillRect(x, lvl, w, h);
       c.globalAlpha = 1;
@@ -701,7 +708,7 @@
       c.fill();
       c.restore();
       // the glass again, faintly, so its reflections sit on top of the whiskey
-      c.globalAlpha = 0.4;
+      c.globalAlpha = 0.22;
       c.drawImage(img, x, y, w, h);
       c.globalAlpha = 1;
     } else if (frac >= 0.999) {

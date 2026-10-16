@@ -1,4 +1,4 @@
-const CACHE = 'sober-pile-v9';
+const CACHE = 'sober-pile-v10';
 const ASSETS = [
   './',
   'index.html',
@@ -8,6 +8,7 @@ const ASSETS = [
   'assets/bottle.png',
   'assets/c-shot.png',
   'assets/c-can.png',
+  'assets/c-soda.png',
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',
