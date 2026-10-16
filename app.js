@@ -4,7 +4,7 @@
   /* =========================================================
      State
      ========================================================= */
-  const APP_VERSION = '1.16';
+  const APP_VERSION = '1.17';
   const STORE_KEY = 'soberpile.v1';
   const DEFAULT_STATE = {
     settings: {
@@ -118,12 +118,17 @@
   const MILESTONES = [1, 3, 7, 14, 30, 60, 90, 180, 365, 500, 730, 1000, 1095, 1461];
   const milestoneName = d => d % 365 === 0 ? `${d / 365} ${plural(d / 365, 'year')}` : `${d} days`;
 
+  // Exact US units, so every comparison is real-world accurate.
+  const GAL = 3.785411784;            // liters in a US gallon
+  const SHOT_L = (1.5 * GAL) / 128;   // a standard US shot: 1.5 fl oz = 44.36 mL
+  const SHOT_ML = SHOT_L * 1000;
+
   // Containers to compare the whiskey against, smallest to largest. L = liters.
   const LIQUIDS = [
     // art: a photo of the container. clear = see-through, so whiskey is drawn inside `poly`
     // (normalised to the image, liquid from `bottom` up to `top`); otherwise a fill line is drawn on it.
     {
-      id: 'shot', one: 'shot', many: 'shots', L: 0.05,
+      id: 'shot', one: 'shot', many: 'shots', L: SHOT_L, note: '1.5 oz',
       art: {
         src: 'assets/c-shot.png', clear: true, top: 0.17, bottom: 0.74,
         poly: [[0.055, 0.155], [0.083, 0.363], [0.125, 0.552], [0.198, 0.661], [0.307, 0.722], [0.509, 0.74], [0.708, 0.722], [0.817, 0.661], [0.89, 0.552], [0.932, 0.363], [0.95, 0.155]],
@@ -138,33 +143,32 @@
       },
     },
     {
-      id: 'jug', one: 'gallon jug', many: 'gallon jugs', L: 3.78541,
+      id: 'jug', one: 'gallon jug', many: 'gallon jugs', L: GAL,
       art: {
         src: 'assets/c-jug.png', clear: true, top: 0.165, bottom: 0.93,
         poly: [[0.305, 0.156], [0.242, 0.189], [0.182, 0.221], [0.126, 0.254], [0.082, 0.286], [0.052, 0.318], [0.034, 0.351], [0.021, 0.383], [0.016, 0.448], [0.015, 0.562], [0.016, 0.805], [0.030, 0.870], [0.056, 0.902], [0.113, 0.934], [0.258, 0.963], [0.500, 0.975], [0.745, 0.963], [0.891, 0.934], [0.947, 0.902], [0.970, 0.870], [0.982, 0.805], [0.985, 0.643], [0.979, 0.513], [0.975, 0.481], [0.765, 0.448], [0.749, 0.416], [0.737, 0.383], [0.725, 0.351], [0.713, 0.318], [0.701, 0.286], [0.702, 0.254], [0.771, 0.221], [0.776, 0.189], [0.679, 0.156]],
       },
     },
-    { id: 'keg', one: 'beer keg', many: 'beer kegs', L: 58.67, note: '15.5 gallon', art: { src: 'assets/c-keg.png', clear: false, top: 0.13, bottom: 0.95 } },
-    { id: 'drum', one: 'oil drum', many: 'oil drums', L: 208.2, note: '55 gallon', art: { src: 'assets/c-drum.png', clear: false, top: 0.1, bottom: 0.96 } },
+    { id: 'keg', one: 'beer keg', many: 'beer kegs', L: 15.5 * GAL, note: '15.5 gallon', art: { src: 'assets/c-keg.png', clear: false, top: 0.13, bottom: 0.95 } },
+    { id: 'drum', one: 'oil drum', many: 'oil drums', L: 55 * GAL, note: '55 gallon', art: { src: 'assets/c-drum.png', clear: false, top: 0.1, bottom: 0.96 } },
     {
-      id: 'hottub', one: 'hot tub', many: 'hot tubs', L: 1892.7, note: '500 gallon',
+      id: 'hottub', one: 'hot tub', many: 'hot tubs', L: 500 * GAL, note: '500 gallon',
       art: {
         src: 'assets/c-hottub.png', clear: true, top: 0.03, bottom: 0.5,
         poly: [[0.068, 0.225], [0.188, 0.093], [0.393, 0.027], [0.620, 0.027], [0.825, 0.103], [0.942, 0.225], [0.935, 0.337], [0.648, 0.489], [0.379, 0.499], [0.075, 0.327]],
       },
     },
     {
-      id: 'pool', one: 'backyard pool', many: 'backyard pools', L: 7570.8, note: '2,000 gallon',
+      id: 'pool', one: 'backyard pool', many: 'backyard pools', L: 2000 * GAL, note: '2,000 gallon',
       // open basin seen from above: the whiskey is an ellipse rising from the floor to the rim
       art: { src: 'assets/c-pool.png', basin: { cx: 0.502, cy: 0.389, rx: 0.471, ry: 0.236, depth: 0.184 } },
     },
     {
-      id: 'olympic', one: 'Olympic pool', many: 'Olympic pools', L: 2498370, note: '660,000 gallon',
+      id: 'olympic', one: 'Olympic pool', many: 'Olympic pools', L: 660000 * GAL, note: '660,000 gallon',
       // rectangular basin in perspective: the surface rises from the floor outline to the rim outline
       art: { src: 'assets/c-olympic.png', quad: { rim: [[0.246, 0.053], [0.754, 0.053], [0.94, 0.832], [0.061, 0.832]], floor: [[0.251, 0.137], [0.749, 0.137], [0.913, 0.832], [0.089, 0.832]] } },
     },
   ];
-  const SHOT_ML = 50;
 
   const TIMELINE = [
     { day: 1, when: 'Days 1–3', title: 'The hardest part', text: 'Withdrawal from heavy daily drinking peaks in the first few days and can be dangerous. You got through it.' },
@@ -1411,7 +1415,7 @@
         <div class="stat"><div class="k">Money kept</div><div class="v num">${money(c.money)}</div><div class="d">${money(s.price)} a bottle</div></div>
         <div class="stat"><div class="k">Whiskey</div><div class="v num">${volumeText(c, 1)}</div><div class="d">${int(c.bottles)} × ${s.sizeMl} mL</div></div>
         <div class="stat"><div class="k">Standard drinks</div><div class="v num">${int(c.stdDrinks)}</div><div class="d">~${Math.round(c.stdDrinks / Math.max(c.soberDays, 1))} a day skipped</div></div>
-        <div class="stat"><div class="k">Shots</div><div class="v num">${int((c.liters * 1000) / SHOT_ML)}</div><div class="d">${SHOT_ML} mL each · ~${Math.round((c.liters * 1000) / SHOT_ML / Math.max(c.soberDays, 1))} a day</div></div>
+        <div class="stat"><div class="k">Shots</div><div class="v num">${int((c.liters * 1000) / SHOT_ML)}</div><div class="d">1.5 oz (44 mL) each · ~${Math.round((c.liters * 1000) / SHOT_ML / Math.max(c.soberDays, 1))} a day</div></div>
         <div class="stat wide"><div class="k">Calories</div><div class="v num">${compact(c.calories)}</div><div class="d">≈ ${c.fatLb.toFixed(1)} lb of fat</div></div>
         <div class="stat wide"><div class="k">Undoing the drinking years</div><div class="v num">${(oldPct * 100).toFixed(1)}%</div>
           <div class="bar"><i style="width:${oldPct * 100}%"></i></div>
