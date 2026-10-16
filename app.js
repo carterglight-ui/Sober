@@ -170,18 +170,27 @@
   }
 
   /* =========================================================
-     Drawing: glass bottles, cases, display case
+     Drawing: realistic glass bottles (pre-rendered sprites),
+     sunlit plaster wall, stone ledge, glass jar
      ========================================================= */
-  const TINTS = [
-    { body: '#87ad92', dark: '#3f5f4a', light: '#d5ebdb', alpha: 0.93, cap: 'cork' },   // sage
-    { body: '#dde3db', dark: '#97a198', light: '#ffffff', alpha: 0.9, cap: 'cork' },    // frosted
-    { body: '#b9cfc3', dark: '#6f8b7e', light: '#f3fbf6', alpha: 0.74, cap: 'green' },  // clear
-    { body: '#557f63', dark: '#263f2f', light: '#a4cdb0', alpha: 0.95, cap: 'green' },  // deep green
+  const GLASSES = [
+    { liquid: ['#3e1c04', '#8e4c10', '#cf8226', '#f2b452', '#a35b14', '#3e1c04'], glass: 'rgba(255,246,228,0.10)', edge: 'rgba(60,32,8,0.5)', cap: 'brass' },
+    { liquid: ['#2f1402', '#6f360a', '#b5641a', '#e09538', '#7e400d', '#2f1402'], glass: 'rgba(255,246,228,0.10)', edge: 'rgba(45,22,4,0.55)', cap: 'black' },
+    { liquid: ['#5c300a', '#ad6d26', '#e3a556', '#f8d18e', '#bd7f35', '#5c300a'], glass: 'rgba(255,246,228,0.12)', edge: 'rgba(70,40,12,0.45)', cap: 'cork' },
+    { tint: ['#0e1308', '#263412', '#435623', '#6c8044', '#2f4019', '#0e1308'], edge: 'rgba(12,18,3,0.7)', cap: 'black' },
+    { tint: ['#170b03', '#3e220c', '#6d4319', '#a06a33', '#4a2a10', '#170b03'], edge: 'rgba(15,8,2,0.7)', cap: 'brass' },
   ];
-  const SHAPES = ['gin', 'flask', 'tall', 'ribbed'];
+  const BOTTLE_SHAPES = {
+    square: { neckW: 0.34, neckH: 0.26, shoulder: 0.06, r: 0.1, square: true, dims: [1.05, 0.96] },
+    round: { neckW: 0.3, neckH: 0.32, shoulder: 0.15, r: 0.14, square: false, dims: [0.95, 1.06] },
+    flask: { neckW: 0.32, neckH: 0.22, shoulder: 0.18, r: 0.32, square: false, dims: [1.15, 0.84] },
+    tall: { neckW: 0.26, neckH: 0.36, shoulder: 0.2, r: 0.12, square: false, dims: [0.86, 1.12] },
+  };
+  const SHAPE_KEYS = Object.keys(BOTTLE_SHAPES);
+  const LIGHT = { x: 9, y: 7 };  // shadow offset: sunlight from the upper left
 
   function roundRect(c, x, y, w, h, r) {
-    r = Math.min(r, w / 2, h / 2);
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
     c.beginPath();
     c.moveTo(x + r, y);
     c.arcTo(x + w, y, x + w, y + h, r);
@@ -191,13 +200,9 @@
     c.closePath();
   }
 
-  function shapeOf(shape) {
-    return {
-      gin: { neckW: 0.36, neckH: 0.24, shoulder: 0.06, r: 0.12, square: true },
-      flask: { neckW: 0.34, neckH: 0.18, shoulder: 0.16, r: 0.3, square: false },
-      tall: { neckW: 0.26, neckH: 0.34, shoulder: 0.14, r: 0.16, square: false },
-      ribbed: { neckW: 0.36, neckH: 0.22, shoulder: 0.1, r: 0.18, square: true },
-    }[shape];
+  function seeded(seed) {
+    let x = (seed % 2147483646) + 1;
+    return () => { x = (x * 16807) % 2147483647; return (x - 1) / 2147483646; };
   }
 
   function bottlePath(c, w, h, sh) {
@@ -221,221 +226,438 @@
     return { top, bot, nw, nh, ys };
   }
 
-  // A glass bottle shaded to read as 3D: side falloff, vertical depth, specular streaks, rim light.
-  function drawBottle(c, w, h, shape, tintIdx, glow, shadow) {
-    const sh = shapeOf(shape);
-    const t = TINTS[tintIdx];
-    const g = bottlePath(c, w, h, sh);
-
-    c.save();
-    if (glow) { c.shadowColor = `rgba(166,242,198,${0.9 * glow})`; c.shadowBlur = 30 * glow; }
-    else if (shadow) { c.shadowColor = 'rgba(0,0,0,0.5)'; c.shadowBlur = w * 0.35; c.shadowOffsetY = w * 0.12; }
-    c.globalAlpha = t.alpha;
-    let gr = c.createLinearGradient(-w / 2, 0, w / 2, 0);
-    gr.addColorStop(0, t.dark);
-    gr.addColorStop(0.22, t.body);
-    gr.addColorStop(0.4, t.light);
-    gr.addColorStop(0.62, t.body);
-    gr.addColorStop(1, t.dark);
-    c.fillStyle = gr;
-    c.fill();
-    c.restore();
-
-    c.save();
-    bottlePath(c, w, h, sh);
-    c.clip();
-    // depth: darker toward the bottom, faint light at the shoulder
-    gr = c.createLinearGradient(0, -h / 2, 0, h / 2);
-    gr.addColorStop(0, 'rgba(255,255,255,0.10)');
-    gr.addColorStop(0.45, 'rgba(0,0,0,0)');
-    gr.addColorStop(1, 'rgba(0,0,0,0.28)');
-    c.fillStyle = gr;
-    c.fillRect(-w / 2, -h / 2, w, h);
-    if (shape === 'ribbed') {
-      for (let i = 1; i < 7; i++) {
-        const x = -w / 2 + (w / 7) * i;
-        c.fillStyle = i % 2 ? 'rgba(0,0,0,0.13)' : 'rgba(255,255,255,0.12)';
-        c.fillRect(x - w * 0.025, g.ys, w * 0.05, g.bot - g.ys);
-      }
-    }
-    // specular streaks
-    c.fillStyle = 'rgba(255,255,255,0.55)';
-    roundRect(c, -w * 0.3, g.ys + h * 0.03, Math.max(1.2, w * 0.07), (g.bot - g.ys) * 0.78, w * 0.04);
-    c.fill();
-    c.fillStyle = 'rgba(255,255,255,0.22)';
-    roundRect(c, w * 0.26, g.ys + h * 0.06, Math.max(1, w * 0.04), (g.bot - g.ys) * 0.6, w * 0.02);
-    c.fill();
-    c.fillStyle = 'rgba(255,255,255,0.4)';
-    c.fillRect(-g.nw * 0.3, g.top + h * 0.1, Math.max(1, w * 0.05), g.nh * 0.75);
-    c.restore();
-
-    // rim light + soft dark edge
-    bottlePath(c, w, h, sh);
-    c.lineJoin = 'round';
-    c.lineWidth = Math.max(1, w * 0.03);
-    c.strokeStyle = 'rgba(0,0,0,0.35)';
-    c.stroke();
-    c.lineWidth = Math.max(0.6, w * 0.018);
-    c.strokeStyle = 'rgba(255,255,255,0.28)';
-    c.stroke();
-
-    // lip ring
-    c.fillStyle = 'rgba(255,255,255,0.3)';
-    c.fillRect(-g.nw / 2, g.top + h * 0.085, g.nw, h * 0.018);
-
-    // cork or cap
-    const capW = g.nw * 1.08, capH = h * (t.cap === 'cork' ? 0.09 : 0.08);
-    gr = c.createLinearGradient(-capW / 2, 0, capW / 2, 0);
-    if (t.cap === 'cork') { gr.addColorStop(0, '#9c8a6a'); gr.addColorStop(0.4, '#e6d9bd'); gr.addColorStop(1, '#a8957a'); }
-    else { gr.addColorStop(0, '#1f3a2a'); gr.addColorStop(0.4, '#4f7d61'); gr.addColorStop(1, '#203b2b'); }
-    c.fillStyle = gr;
-    roundRect(c, -capW / 2, g.top - h * 0.02, capW, capH, w * 0.05);
-    c.fill();
-
-    // blank paper label
-    const bodyH = g.bot - g.ys;
-    const lw = w * (shape === 'flask' ? 0.6 : 0.68), lh = bodyH * (shape === 'tall' ? 0.42 : 0.5);
-    const ly = g.ys + bodyH * 0.2;
-    gr = c.createLinearGradient(-lw / 2, 0, lw / 2, 0);
-    gr.addColorStop(0, '#bdb7a8');
-    gr.addColorStop(0.35, '#ece7da');
-    gr.addColorStop(0.75, '#e2dccd');
-    gr.addColorStop(1, '#b3ad9e');
-    c.fillStyle = gr;
-    roundRect(c, -lw / 2, ly, lw, lh, w * 0.04);
-    c.fill();
+  function hGrad(c, x0, x1, stops) {
+    const g = c.createLinearGradient(x0, 0, x1, 0);
+    const n = stops.length - 1;
+    stops.forEach((s, i) => g.addColorStop([0, 0.16, 0.38, 0.5, 0.74, 1][i] ?? i / n, s));
+    return g;
   }
 
-  function drawCase(c, w, h, count) {
-    let gr = c.createLinearGradient(0, -h / 2, 0, h / 2);
-    gr.addColorStop(0, '#5c7a66');
-    gr.addColorStop(1, '#34493b');
+  // Aged paper label with grain, stains, worn edges and faint print.
+  function paintLabel(c, x, y, w, h, seed) {
+    const rnd = seeded(seed);
+    c.save();
+    // slightly irregular, worn outline
+    c.beginPath();
+    const j = () => (rnd() - 0.5) * Math.min(w, h) * 0.04;
+    c.moveTo(x + j(), y + j());
+    for (let i = 1; i <= 6; i++) c.lineTo(x + (w * i) / 6 + j(), y + j());
+    for (let i = 1; i <= 6; i++) c.lineTo(x + w + j(), y + (h * i) / 6 + j());
+    for (let i = 5; i >= 0; i--) c.lineTo(x + (w * i) / 6 + j() * 2, y + h + j() * 2);
+    for (let i = 5; i >= 1; i--) c.lineTo(x + j(), y + (h * i) / 6 + j());
+    c.closePath();
+    c.fillStyle = '#e4d4b0';
+    c.fill();
+    c.clip();
+    // grain
+    for (let i = 0; i < (w * h) / 5; i++) {
+      c.fillStyle = rnd() < 0.5 ? `rgba(120,85,40,${0.04 + rnd() * 0.1})` : `rgba(255,250,235,${0.05 + rnd() * 0.12})`;
+      c.fillRect(x + rnd() * w, y + rnd() * h, 0.8 + rnd() * 1.2, 0.8 + rnd() * 1.2);
+    }
+    // stains
+    for (let i = 0; i < 4; i++) {
+      const sx = x + rnd() * w, sy = y + rnd() * h, sr = Math.max(w, h) * (0.15 + rnd() * 0.3);
+      const g = c.createRadialGradient(sx, sy, 0, sx, sy, sr);
+      g.addColorStop(0, `rgba(150,105,50,${0.08 + rnd() * 0.12})`);
+      g.addColorStop(1, 'rgba(150,105,50,0)');
+      c.fillStyle = g;
+      c.fillRect(x, y, w, h);
+    }
+    // darker worn edges
+    const eg = c.createRadialGradient(x + w / 2, y + h / 2, Math.min(w, h) * 0.3, x + w / 2, y + h / 2, Math.max(w, h) * 0.75);
+    eg.addColorStop(0, 'rgba(110,75,35,0)');
+    eg.addColorStop(1, 'rgba(110,75,35,0.45)');
+    c.fillStyle = eg;
+    c.fillRect(x, y, w, h);
+    // faint, unbranded print: a border and a few lines of "type"
+    c.strokeStyle = 'rgba(70,45,22,0.3)';
+    c.lineWidth = Math.max(0.5, w * 0.012);
+    c.strokeRect(x + w * 0.1, y + h * 0.1, w * 0.8, h * 0.8);
+    c.fillStyle = 'rgba(60,38,18,0.32)';
+    c.fillRect(x + w * 0.25, y + h * 0.26, w * 0.5, Math.max(1, h * 0.07));
+    [0.46, 0.56, 0.66].forEach((ly, i) => c.fillRect(x + w * (0.22 + i * 0.04), y + h * ly, w * (0.56 - i * 0.08), Math.max(0.6, h * 0.025)));
+    c.restore();
+  }
+
+  function paintCap(c, g, w, h, kind) {
+    const cw = g.nw * 1.12, ch = h * 0.085, cy = g.top - h * 0.01;
+    let gr;
+    if (kind === 'brass') {
+      gr = hGrad(c, -cw / 2, cw / 2, ['#4f3a14', '#9c7a36', '#e9cd88', '#fbe9b8', '#a8843d', '#4a3511']);
+      c.fillStyle = gr;
+      roundRect(c, -cw / 2, cy, cw, ch, cw * 0.12);
+      c.fill();
+      c.strokeStyle = 'rgba(60,40,10,0.35)';
+      c.lineWidth = Math.max(0.5, w * 0.008);
+      for (let i = 1; i < 8; i++) { const x = -cw / 2 + (cw / 8) * i; c.beginPath(); c.moveTo(x, cy + 1); c.lineTo(x, cy + ch - 1); c.stroke(); }
+      // foil collar on the neck
+      c.fillStyle = hGrad(c, -g.nw / 2, g.nw / 2, ['#5a4318', '#a5843f', '#e3c67f', '#f3dea5', '#9c7a35', '#5a4318']);
+      c.fillRect(-g.nw / 2 - 0.5, cy + ch, g.nw + 1, h * 0.05);
+    } else if (kind === 'black') {
+      gr = hGrad(c, -cw / 2, cw / 2, ['#050505', '#1c1c1c', '#5a5a5a', '#2a2a2a', '#111', '#050505']);
+      c.fillStyle = gr;
+      roundRect(c, -cw / 2, cy, cw, ch * 1.1, cw * 0.14);
+      c.fill();
+    } else {
+      gr = hGrad(c, -cw / 2, cw / 2, ['#5e4224', '#9a7447', '#cfa977', '#dcbb8c', '#a07a4c', '#5e4224']);
+      c.fillStyle = gr;
+      roundRect(c, -cw / 2 * 0.92, cy - h * 0.012, cw * 0.92, ch * 1.15, cw * 0.1);
+      c.fill();
+      c.fillStyle = 'rgba(60,40,20,0.35)';
+      for (let i = 0; i < 10; i++) c.fillRect(-cw * 0.4 + Math.random() * cw * 0.8, cy + Math.random() * ch, 1, 1);
+    }
+  }
+
+  function paintBottle(c, w, h, shapeKey, gi, seed) {
+    const sh = BOTTLE_SHAPES[shapeKey];
+    const G = GLASSES[gi];
+    const g = bottlePath(c, w, h, sh);
+    const t = w * 0.05;   // glass thickness
+
+    c.save();
+    c.clip();
+    if (G.tint) {
+      // coloured glass bottle with dark contents
+      c.fillStyle = hGrad(c, -w / 2, w / 2, G.tint);
+      c.fillRect(-w / 2, -h / 2, w, h);
+    } else {
+      c.fillStyle = G.glass;
+      c.fillRect(-w / 2, -h / 2, w, h);
+      // whiskey, filled up into the neck
+      const lt = g.top + g.nh * 0.6;
+      c.save();
+      bottlePath(c, w - t * 2, h - t * 2, sh);
+      c.clip();
+      c.fillStyle = hGrad(c, -w / 2 + t, w / 2 - t, G.liquid);
+      c.fillRect(-w / 2, lt, w, h);
+      // meniscus
+      c.fillStyle = 'rgba(255,224,160,0.55)';
+      c.fillRect(-w / 2, lt, w, Math.max(1, h * 0.006));
+      // light passing through and pooling near the base
+      const cg = c.createRadialGradient(w * 0.08, g.bot - h * 0.14, 0, w * 0.08, g.bot - h * 0.14, w * 0.55);
+      cg.addColorStop(0, 'rgba(255,210,120,0.55)');
+      cg.addColorStop(1, 'rgba(255,210,120,0)');
+      c.fillStyle = cg;
+      c.fillRect(-w / 2, g.ys, w, h);
+      c.restore();
+    }
+    // depth: darker toward the base
+    let vg = c.createLinearGradient(0, -h / 2, 0, h / 2);
+    vg.addColorStop(0, 'rgba(255,255,255,0.06)');
+    vg.addColorStop(0.55, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(25,10,0,0.3)');
+    c.fillStyle = vg;
+    c.fillRect(-w / 2, -h / 2, w, h);
+    // thick glass at the edges and the base
+    bottlePath(c, w, h, sh);
+    c.lineWidth = t * 2.2;
+    c.strokeStyle = G.edge;
+    c.stroke();
+    c.fillStyle = 'rgba(255,240,215,0.18)';
+    c.fillRect(-w / 2, g.bot - h * 0.035, w, h * 0.035);
+
+    // label
+    const bodyH = g.bot - g.ys;
+    const lw = w * (shapeKey === 'flask' ? 0.66 : 0.8), lh = bodyH * (shapeKey === 'tall' ? 0.42 : 0.52);
+    paintLabel(c, -lw / 2, g.ys + bodyH * 0.18, lw, lh, seed);
+    // label wraps around the body: shade its sides
+    c.fillStyle = hGrad(c, -w / 2, w / 2, ['rgba(40,20,5,0.45)', 'rgba(40,20,5,0.12)', 'rgba(255,255,255,0.05)', 'rgba(0,0,0,0)', 'rgba(40,20,5,0.15)', 'rgba(40,20,5,0.5)']);
+    c.fillRect(-w / 2, g.ys + bodyH * 0.16, w, lh + bodyH * 0.06);
+
+    // specular highlights from the window light
+    const sg = c.createLinearGradient(-w * 0.4, 0, -w * 0.22, 0);
+    sg.addColorStop(0, 'rgba(255,255,255,0)');
+    sg.addColorStop(0.45, 'rgba(255,255,250,0.8)');
+    sg.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = sg;
+    c.fillRect(-w * 0.4, g.ys + h * 0.02, w * 0.18, bodyH * 0.9);
+    c.fillStyle = 'rgba(255,255,245,0.3)';
+    c.fillRect(w * 0.27, g.ys + h * 0.05, Math.max(1, w * 0.04), bodyH * 0.7);
+    c.fillStyle = 'rgba(255,255,245,0.55)';
+    c.fillRect(-g.nw * 0.32, g.top + h * 0.1, Math.max(1, w * 0.045), g.nh * 0.8);
+    // shoulder glint
+    const gx = -w * 0.22, gy = g.ys - h * 0.02;
+    const rg = c.createRadialGradient(gx, gy, 0, gx, gy, w * 0.2);
+    rg.addColorStop(0, 'rgba(255,255,245,0.75)');
+    rg.addColorStop(1, 'rgba(255,255,245,0)');
+    c.fillStyle = rg;
+    c.fillRect(gx - w * 0.2, gy - w * 0.2, w * 0.4, w * 0.4);
+    c.restore();
+
+    // crisp outer edge
+    bottlePath(c, w, h, sh);
+    c.lineJoin = 'round';
+    c.lineWidth = Math.max(0.8, w * 0.018);
+    c.strokeStyle = 'rgba(45,25,8,0.55)';
+    c.stroke();
+    // lip ring on the neck
+    c.fillStyle = 'rgba(255,245,225,0.35)';
+    c.fillRect(-g.nw / 2, g.top + h * 0.095, g.nw, Math.max(1, h * 0.015));
+    paintCap(c, g, w, h, G.cap);
+  }
+
+  function paintCrate(c, w, h, count, seed) {
+    const rnd = seeded(seed);
     // necks peeking out
     for (let i = 0; i < 4; i++) {
       const x = -w / 2 + (w / 4) * (i + 0.5);
-      c.fillStyle = i % 2 ? 'rgba(221,227,219,0.9)' : 'rgba(135,173,146,0.95)';
-      roundRect(c, x - w * 0.05, -h / 2 - h * 0.3, w * 0.1, h * 0.36, 3);
-      c.fill();
-      c.fillStyle = '#d9cbb0';
-      roundRect(c, x - w * 0.055, -h / 2 - h * 0.34, w * 0.11, h * 0.08, 2);
-      c.fill();
+      c.fillStyle = hGrad(c, x - w * 0.05, x + w * 0.05, ['#2b1405', '#7a420f', '#c47a26', '#e2a04a', '#7a420f', '#2b1405']);
+      c.fillRect(x - w * 0.045, -h / 2 - h * 0.32, w * 0.09, h * 0.36);
+      c.fillStyle = hGrad(c, x - w * 0.05, x + w * 0.05, ['#4f3a14', '#9c7a36', '#e9cd88', '#fbe9b8', '#a8843d', '#4a3511']);
+      c.fillRect(x - w * 0.05, -h / 2 - h * 0.36, w * 0.1, h * 0.09);
     }
-    c.fillStyle = gr;
-    roundRect(c, -w / 2, -h / 2, w, h, w * 0.04);
-    c.fill();
-    c.strokeStyle = 'rgba(255,255,255,0.18)';
-    c.lineWidth = 1;
-    c.stroke();
+    const planks = 3;
+    for (let i = 0; i < planks; i++) {
+      const py = -h / 2 + (h / planks) * i;
+      const tone = 0.85 + rnd() * 0.3;
+      c.fillStyle = `rgb(${Math.round(150 * tone)},${Math.round(108 * tone)},${Math.round(64 * tone)})`;
+      c.fillRect(-w / 2, py, w, h / planks - 1);
+      c.strokeStyle = 'rgba(70,40,15,0.25)';
+      c.lineWidth = 0.7;
+      for (let k = 0; k < 4; k++) {
+        const gy = py + 2 + rnd() * (h / planks - 4);
+        c.beginPath(); c.moveTo(-w / 2, gy); c.quadraticCurveTo(0, gy + (rnd() - 0.5) * 3, w / 2, gy); c.stroke();
+      }
+    }
+    c.strokeStyle = 'rgba(50,28,10,0.6)';
+    c.lineWidth = 1.2;
+    c.strokeRect(-w / 2, -h / 2, w, h);
     if (w > 40) {
-      c.fillStyle = '#e8e3d6';
-      roundRect(c, -w * 0.14, -h * 0.26, w * 0.28, h * 0.52, 4);
-      c.fill();
-      c.fillStyle = '#2b3a31';
-      c.font = `800 ${h * 0.3}px Figtree, -apple-system, sans-serif`;
+      c.fillStyle = 'rgba(40,22,8,0.75)';
+      c.font = `800 ${h * 0.34}px Georgia, serif`;
       c.textAlign = 'center';
       c.textBaseline = 'middle';
       c.fillText(String(count), 0, 1);
     }
   }
 
-  // Dark glass display case the pile sits in. Returns the geometry the physics uses.
-  function boxGeometry(W, H) {
-    const x = Math.round(W * 0.06), w = W - x * 2;
-    const y = Math.round(H * 0.19);
-    const floor = Math.round(H * 0.7);
-    return { x, y, w, floor, tray: Math.round(H * 0.79), r: Math.min(34, W * 0.08) };
+  // Pre-rendered sprite cache: each variant is painted once at its exact on-screen size.
+  const Sprites = (() => {
+    let cache = new Map();
+    const PAD = 6;
+    function key(...a) { return a.join('|'); }
+    function make(w, h, dpr, paint) {
+      const cv = document.createElement('canvas');
+      cv.width = Math.ceil((w + PAD * 2) * dpr);
+      cv.height = Math.ceil((h + PAD * 2) * dpr * 1.12);
+      const c = cv.getContext('2d');
+      c.setTransform(dpr, 0, 0, dpr, cv.width / 2, cv.height / 2);
+      paint(c);
+      return cv;
+    }
+    function shadow(w, h, dpr, pathFn, blur) {
+      const m = blur * 2 + PAD;
+      const cv = document.createElement('canvas');
+      cv.width = Math.ceil((w + m * 2) * dpr);
+      cv.height = Math.ceil((h + m * 2) * dpr);
+      const c = cv.getContext('2d');
+      const OFF = 4000;
+      c.setTransform(dpr, 0, 0, dpr, cv.width / 2 - OFF * dpr, cv.height / 2);
+      c.shadowColor = 'rgba(30,16,4,0.55)';
+      c.shadowBlur = blur * dpr;
+      c.shadowOffsetX = OFF * dpr;
+      c.fillStyle = '#000';
+      pathFn(c);
+      c.fill();
+      return cv;
+    }
+    return {
+      clear() { cache = new Map(); },
+      bottle(shape, gi, w, h, dpr, seed) {
+        const k = key('b', shape, gi, Math.round(w), Math.round(h), dpr, seed % 3);
+        if (!cache.has(k)) cache.set(k, make(w, h, dpr, c => paintBottle(c, w, h, shape, gi, seed % 3 + gi * 11)));
+        return cache.get(k);
+      },
+      crate(w, h, dpr, count) {
+        const k = key('c', Math.round(w), Math.round(h), dpr, count);
+        if (!cache.has(k)) cache.set(k, make(w, h, dpr, c => paintCrate(c, w, h, count, 5)));
+        return cache.get(k);
+      },
+      shadow(kind, shape, w, h, dpr) {
+        const k = key('s', kind, shape, Math.round(w), Math.round(h), dpr);
+        if (!cache.has(k)) {
+          const blur = Math.max(4, w * 0.25);
+          cache.set(k, shadow(w, h, dpr, c => kind === 'case' ? roundRect(c, -w / 2, -h / 2, w, h, 3) : bottlePath(c, w, h, BOTTLE_SHAPES[shape]), blur));
+        }
+        return cache.get(k);
+      },
+    };
+  })();
+
+  function drawSprite(c, cv, dpr) {
+    c.drawImage(cv, -cv.width / dpr / 2, -cv.height / dpr / 2, cv.width / dpr, cv.height / dpr);
   }
 
-  function drawScene(c, W, H, b) {
-    let g = c.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, '#1c2220');
-    g.addColorStop(1, '#141817');
+  // A single bottle for the info sheet
+  function drawBottle(c, w, h, shape, gi) {
+    paintBottle(c, w, h, shape, gi, 1);
+  }
+
+  // Sunlit plaster wall and a rough stone ledge.
+  function drawScene(c, W, H, fy, dpr) {
+    const rnd = seeded(1234);
+    let g = c.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, '#d8c6a4');
+    g.addColorStop(0.5, '#bba582');
+    g.addColorStop(1, '#857052');
+    c.fillStyle = '#b39d7a';
+    c.fillRect(0, 0, W, H);
     c.fillStyle = g;
     c.fillRect(0, 0, W, H);
+    // mottled plaster
+    for (let i = 0; i < 70; i++) {
+      const x = rnd() * W, y = rnd() * fy, r = W * (0.04 + rnd() * 0.22);
+      const light = rnd() < 0.5;
+      const rg = c.createRadialGradient(x, y, 0, x, y, r);
+      rg.addColorStop(0, light ? `rgba(250,238,210,${0.05 + rnd() * 0.08})` : `rgba(95,75,48,${0.04 + rnd() * 0.08})`);
+      rg.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = rg;
+      c.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    // warm glow from the window, upper left
+    let rg = c.createRadialGradient(W * 0.12, H * 0.12, 0, W * 0.12, H * 0.12, W * 1.1);
+    rg.addColorStop(0, 'rgba(255,228,170,0.45)');
+    rg.addColorStop(1, 'rgba(255,228,170,0)');
+    c.fillStyle = rg;
+    c.fillRect(0, 0, W, H);
+    // diagonal shafts of sunlight with window-frame shadows between them
+    const ang = 0.62;
+    [[-0.1, 0.16], [0.16, 0.1], [0.36, 0.13], [0.62, 0.08]].forEach(([off, bw]) => {
+      c.save();
+      c.translate(W * off, 0);
+      c.rotate(-ang);
+      const width = W * bw;
+      const lg = c.createLinearGradient(-width / 2, 0, width / 2, 0);
+      lg.addColorStop(0, 'rgba(255,236,190,0)');
+      lg.addColorStop(0.25, 'rgba(255,236,190,0.26)');
+      lg.addColorStop(0.75, 'rgba(255,236,190,0.26)');
+      lg.addColorStop(1, 'rgba(255,236,190,0)');
+      c.fillStyle = lg;
+      c.fillRect(-width / 2, -H, width, H * 3);
+      c.restore();
+    });
+    // deeper shade toward the right
+    g = c.createLinearGradient(0, 0, W, 0);
+    g.addColorStop(0, 'rgba(40,25,10,0)');
+    g.addColorStop(0.6, 'rgba(40,25,10,0.08)');
+    g.addColorStop(1, 'rgba(40,25,10,0.38)');
+    c.fillStyle = g;
+    c.fillRect(0, 0, W, fy);
 
-    // back of the case
-    const bh = b.floor - b.y + 12;
-    roundRect(c, b.x, b.y, b.w, bh, b.r);
-    g = c.createRadialGradient(W / 2, b.floor, 10, W / 2, b.floor - bh * 0.3, Math.max(b.w, bh) * 0.85);
-    g.addColorStop(0, '#26352e');
-    g.addColorStop(0.55, '#141b18');
-    g.addColorStop(1, '#0c100f');
-    c.fillStyle = g;
-    c.fill();
-    // inner wall shading on the sides
-    c.save();
-    roundRect(c, b.x, b.y, b.w, bh, b.r);
-    c.clip();
-    g = c.createLinearGradient(b.x, 0, b.x + b.w, 0);
-    g.addColorStop(0, 'rgba(166,242,198,0.07)');
-    g.addColorStop(0.08, 'rgba(0,0,0,0)');
-    g.addColorStop(0.92, 'rgba(0,0,0,0)');
-    g.addColorStop(1, 'rgba(166,242,198,0.07)');
-    c.fillStyle = g;
-    c.fillRect(b.x, b.y, b.w, bh);
-    g = c.createLinearGradient(0, b.y, 0, b.y + bh * 0.25);
-    g.addColorStop(0, 'rgba(0,0,0,0.45)');
-    g.addColorStop(1, 'rgba(0,0,0,0)');
-    c.fillStyle = g;
-    c.fillRect(b.x, b.y, b.w, bh * 0.25);
-    c.restore();
-    // glowing rim
-    roundRect(c, b.x, b.y, b.w, bh, b.r);
-    g = c.createLinearGradient(0, b.y, 0, b.floor);
-    g.addColorStop(0, 'rgba(166,242,198,0.55)');
-    g.addColorStop(0.5, 'rgba(166,242,198,0.18)');
-    g.addColorStop(1, 'rgba(166,242,198,0.05)');
-    c.strokeStyle = g;
-    c.lineWidth = 2.5;
-    c.stroke();
-
-    // soft light pooling on the floor
-    g = c.createRadialGradient(W / 2, b.floor, 0, W / 2, b.floor, b.w * 0.55);
-    g.addColorStop(0, 'rgba(166,242,198,0.12)');
-    g.addColorStop(1, 'rgba(166,242,198,0)');
-    c.fillStyle = g;
-    c.fillRect(b.x, b.floor - b.w * 0.3, b.w, b.w * 0.3);
-
-    // tray the bottles rest on
-    const tx = b.x - 6, tw = b.w + 12;
-    roundRect(c, tx, b.floor - 4, tw, b.tray - b.floor + 4, 16);
-    g = c.createLinearGradient(0, b.floor, 0, b.tray);
-    g.addColorStop(0, '#323a37');
-    g.addColorStop(0.18, '#232a27');
-    g.addColorStop(1, '#121615');
-    c.fillStyle = g;
-    c.fill();
-    g = c.createLinearGradient(tx, 0, tx + tw, 0);
-    g.addColorStop(0, 'rgba(166,242,198,0.08)');
-    g.addColorStop(0.5, 'rgba(166,242,198,0.45)');
-    g.addColorStop(1, 'rgba(166,242,198,0.08)');
-    c.strokeStyle = g;
-    c.lineWidth = 1.5;
+    // stone ledge: top surface, then the rough front face
+    const top = fy, lip = Math.max(16, H * 0.06);
     c.beginPath();
-    c.moveTo(tx + 14, b.floor - 3);
-    c.lineTo(tx + tw - 14, b.floor - 3);
-    c.stroke();
-    // shadow under the tray
-    c.save();
-    c.filter = 'blur(8px)';
-    c.fillStyle = 'rgba(0,0,0,0.4)';
-    roundRect(c, tx + 16, b.tray - 6, tw - 32, 16, 8);
+    c.moveTo(0, top);
+    for (let x = 0; x <= W; x += 6) c.lineTo(x, top + (rnd() - 0.5) * 2);
+    c.lineTo(W, H); c.lineTo(0, H); c.closePath();
+    g = c.createLinearGradient(0, 0, W, 0);
+    g.addColorStop(0, '#a8977b');
+    g.addColorStop(0.5, '#8d7c62');
+    g.addColorStop(1, '#5f5241');
+    c.fillStyle = g;
     c.fill();
-    c.restore();
+    // front face, darker, with a chipped upper edge
+    c.beginPath();
+    c.moveTo(0, top + lip);
+    for (let x = 0; x <= W; x += 5) c.lineTo(x, top + lip + (rnd() - 0.5) * 4 + (rnd() < 0.06 ? rnd() * 6 : 0));
+    c.lineTo(W, H); c.lineTo(0, H); c.closePath();
+    g = c.createLinearGradient(0, top + lip, 0, H);
+    g.addColorStop(0, '#5d503e');
+    g.addColorStop(1, '#2e261d');
+    c.fillStyle = g;
+    c.fill();
+    // pits and flecks
+    for (let i = 0; i < W * 2.2; i++) {
+      const x = rnd() * W, y = top + 2 + rnd() * (H - top);
+      const onTop = y < top + lip;
+      c.fillStyle = rnd() < 0.55 ? `rgba(30,20,10,${(onTop ? 0.1 : 0.18) + rnd() * 0.22})` : `rgba(230,215,185,${0.06 + rnd() * (onTop ? 0.2 : 0.1)})`;
+      c.beginPath();
+      c.ellipse(x, y, 0.4 + rnd() * 1.3, 0.3 + rnd() * 0.8, rnd() * 3, 0, Math.PI * 2);
+      c.fill();
+    }
+    // soft weathering blotches on the stone
+    for (let i = 0; i < 18; i++) {
+      const x = rnd() * W, y = top + rnd() * (H - top), r = W * (0.04 + rnd() * 0.1);
+      const bg = c.createRadialGradient(x, y, 0, x, y, r);
+      bg.addColorStop(0, rnd() < 0.5 ? 'rgba(20,12,4,0.18)' : 'rgba(220,200,165,0.12)');
+      bg.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = bg;
+      c.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    // highlight on the ledge lip
+    c.fillStyle = 'rgba(255,240,205,0.25)';
+    c.fillRect(0, top, W * 0.7, 1.5);
+
+    // fine film grain across everything
+    try {
+      const img = c.getImageData(0, 0, Math.round(W * dpr), Math.round(H * dpr));
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const n = (Math.random() - 0.5) * 16;
+        d[i] += n; d[i + 1] += n; d[i + 2] += n;
+      }
+      c.putImageData(img, 0, 0);
+    } catch (e) { /* ignore */ }
+
+    // vignette
+    rg = c.createRadialGradient(W * 0.45, H * 0.45, Math.min(W, H) * 0.35, W * 0.5, H * 0.5, Math.max(W, H) * 0.8);
+    rg.addColorStop(0, 'rgba(20,12,4,0)');
+    rg.addColorStop(1, 'rgba(20,12,4,0.42)');
+    c.fillStyle = rg;
+    c.fillRect(0, 0, W, H);
   }
 
-  // faint reflection across the front of the case, drawn over the bottles
-  function drawGlassFront(c, b) {
-    const bh = b.floor - b.y;
-    const g = c.createLinearGradient(b.x, b.y, b.x + b.w, b.floor);
-    g.addColorStop(0, 'rgba(255,255,255,0.06)');
-    g.addColorStop(0.3, 'rgba(255,255,255,0.0)');
-    g.addColorStop(0.62, 'rgba(255,255,255,0.0)');
-    g.addColorStop(0.7, 'rgba(255,255,255,0.035)');
-    g.addColorStop(0.78, 'rgba(255,255,255,0.0)');
-    c.fillStyle = g;
-    roundRect(c, b.x, b.y, b.w, bh, b.r);
+  // A big glass jar on the ledge, filled to pct, for the liquid view.
+  function drawJar(c, W, H, fy, pct) {
+    const jh = Math.max(60, fy - H * 0.44), jw = Math.min(W * 0.5, 220, jh * 0.85);
+    const x = W / 2 - jw / 2, y = fy - jh, r = jw * 0.12;
+    // cast shadow
+    c.save();
+    c.shadowColor = 'rgba(30,16,4,0.5)';
+    c.shadowBlur = 24;
+    c.shadowOffsetX = LIGHT.x * 2.5;
+    c.shadowOffsetY = 4;
+    c.fillStyle = 'rgba(255,255,255,0.01)';
+    roundRect(c, x, y, jw, jh, r);
     c.fill();
+    c.restore();
+    c.save();
+    roundRect(c, x, y, jw, jh, r);
+    c.clip();
+    c.fillStyle = 'rgba(255,248,232,0.16)';
+    c.fillRect(x, y, jw, jh);
+    const lt = y + jh * 0.06 + (jh * 0.92) * (1 - pct);
+    c.fillStyle = hGrad(c, x, x + jw, GLASSES[0].liquid);
+    c.fillRect(x, lt, jw, jh);
+    const cg = c.createRadialGradient(x + jw * 0.55, y + jh * 0.85, 0, x + jw * 0.55, y + jh * 0.85, jw * 0.6);
+    cg.addColorStop(0, 'rgba(255,210,120,0.5)');
+    cg.addColorStop(1, 'rgba(255,210,120,0)');
+    c.fillStyle = cg;
+    c.fillRect(x, lt, jw, jh);
+    c.fillStyle = 'rgba(255,226,160,0.7)';
+    c.beginPath(); c.ellipse(W / 2, lt, jw / 2, jw * 0.05, 0, 0, Math.PI * 2); c.fill();
+    // glass thickness, speculars
+    roundRect(c, x, y, jw, jh, r);
+    c.lineWidth = jw * 0.06;
+    c.strokeStyle = 'rgba(60,35,10,0.35)';
+    c.stroke();
+    const sg = c.createLinearGradient(x + jw * 0.08, 0, x + jw * 0.2, 0);
+    sg.addColorStop(0, 'rgba(255,255,255,0)');
+    sg.addColorStop(0.5, 'rgba(255,255,250,0.75)');
+    sg.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = sg;
+    c.fillRect(x + jw * 0.08, y + jh * 0.08, jw * 0.12, jh * 0.84);
+    c.fillStyle = 'rgba(255,255,250,0.3)';
+    c.fillRect(x + jw * 0.84, y + jh * 0.12, jw * 0.03, jh * 0.7);
+    c.restore();
+    roundRect(c, x, y, jw, jh, r);
+    c.lineWidth = 1.2;
+    c.strokeStyle = 'rgba(45,25,8,0.5)';
+    c.stroke();
+    // rim
+    c.strokeStyle = 'rgba(255,248,230,0.6)';
+    c.lineWidth = 1.5;
+    c.beginPath(); c.ellipse(W / 2, y + 2, jw / 2 - 2, jw * 0.045, 0, 0, Math.PI * 2); c.stroke();
   }
 
   /* =========================================================
@@ -443,10 +665,9 @@
      ========================================================= */
   const Pile = (() => {
     const M = window.Matter;
-    const BASE_W = 36, BASE_H = 92, MAX_LOOSE = 140, CASE_SIZE = 12;
-    const DIMS = { gin: [1, 1], flask: [1.18, 0.8], tall: [0.88, 1.08], ribbed: [1.05, 0.95] };
-    let engine, runner, canvas, ctx, W = 0, H = 0, box = null, dpr = 1, walls = [], items = [], gen = 0;
-    let running = false, lastClink = 0, scale = 1, built = false, scene = null, down = null;
+    const BASE_W = 38, BASE_H = 100, MAX_LOOSE = 140, CASE_SIZE = 12, FLOOR = 0.8;
+    let engine, runner, canvas, ctx, W = 0, H = 0, floorY = 0, dpr = 1, walls = [], items = [], gen = 0;
+    let running = false, lastClink = 0, scale = 1, built = false, scene = null, down = null, view = 'bottles', liquidPct = 0;
 
     function init(c) {
       canvas = c;
@@ -462,7 +683,7 @@
 
       canvas.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, t: Date.now() }; });
       canvas.addEventListener('pointerup', e => {
-        if (!down) return;
+        if (!down || view !== 'bottles') return;
         const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
         if (moved < 8 && Date.now() - down.t < 400) {
           const r = canvas.getBoundingClientRect();
@@ -496,17 +717,18 @@
       const r = canvas.getBoundingClientRect();
       dpr = Math.min(window.devicePixelRatio || 1, 2.5);
       W = r.width; H = r.height;
-      box = boxGeometry(W, H);
+      floorY = Math.round(H * FLOOR);
       canvas.width = Math.round(W * dpr);
       canvas.height = Math.round(H * dpr);
       canvas.pixelRatio = dpr;
+      Sprites.clear();
       if (W > 10 && H > 10) {
         scene = document.createElement('canvas');
         scene.width = canvas.width;
         scene.height = canvas.height;
         const sc = scene.getContext('2d');
         sc.scale(dpr, dpr);
-        drawScene(sc, W, H, box);
+        drawScene(sc, W, H, floorY, dpr);
       }
     }
 
@@ -514,9 +736,9 @@
       M.Composite.remove(engine.world, walls);
       const t = 200, opts = { isStatic: true, friction: 0.9, restitution: 0.1 };
       walls = [
-        M.Bodies.rectangle(W / 2, box.floor + t / 2, W * 3, t, opts),
-        M.Bodies.rectangle(box.x + 3 - t / 2, box.floor - H * 2, t, H * 4, opts),
-        M.Bodies.rectangle(box.x + box.w - 3 + t / 2, box.floor - H * 2, t, H * 4, opts),
+        M.Bodies.rectangle(W / 2, floorY + t / 2, W * 3, t, opts),
+        M.Bodies.rectangle(-t / 2, floorY - H * 2, t, H * 4, opts),
+        M.Bodies.rectangle(W + t / 2, floorY - H * 2, t, H * 4, opts),
       ];
       M.Composite.add(engine.world, walls);
     }
@@ -531,7 +753,7 @@
       M.Composite.remove(engine.world, items.map(i => i.body));
       items = [];
 
-      // group older bottles into cases once the pile gets big
+      // group older bottles into crates once the pile gets big
       const units = [];
       if (list.length > MAX_LOOSE) {
         const caseable = list.length - (CASE_SIZE + (list.length % CASE_SIZE));
@@ -543,7 +765,7 @@
 
       const unitArea = u => u.kind === 'case' ? 3.4 * 0.62 : 1;
       const totalArea = units.reduce((a, u) => a + unitArea(u), 0) * BASE_W * BASE_H;
-      scale = totalArea ? clamp(Math.sqrt((0.48 * box.w * (box.floor - box.y)) / totalArea), 0.26, 1.7) : 1;
+      scale = totalArea ? clamp(Math.sqrt((0.36 * W * floorY) / totalArea), 0.24, 1.45) : 1;
 
       const old = units.filter(u => !u.days.some(d => d.isNew));
       const fresh = units.filter(u => u.days.some(d => d.isNew));
@@ -559,7 +781,7 @@
         drop(u, true);
         if (navigator.vibrate) navigator.vibrate(18);
         const d = u.days[u.days.length - 1];
-        toast(`Day ${d.day}'s bottle just hit the pile`);
+        toast(`Day ${d.day}'s bottle just landed on the pile`);
       }, freshStart + i * 650));
       built = true;
     }
@@ -568,52 +790,82 @@
       const isCase = u.kind === 'case';
       const day = u.days[u.days.length - 1];
       const hash = Math.imul(day.day + 7, 2654435761) >>> 0;
-      const shape = SHAPES[hash % SHAPES.length];
-      const tint = (hash >>> 4) % TINTS.length;
-      const [dw, dh] = isCase ? [3.4, 0.62] : DIMS[shape];
+      let shape = SHAPE_KEYS[hash % SHAPE_KEYS.length];
+      // mostly amber whiskey, with the odd green or brown glass bottle
+      const roll = (hash >>> 5) % 10;
+      const gi = roll < 7 ? roll % 3 : roll === 7 || roll === 8 ? 3 : 4;
+      if (gi === 3 && shape === 'square') shape = 'tall';
+      const [dw, dh] = isCase ? [3.4, 0.62] : BOTTLE_SHAPES[shape].dims;
       const w = BASE_W * dw * scale;
       const h = BASE_H * dh * scale;
       // bias drops toward the middle so the bottles heap into a mound
       const spread = (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
-      const x = clamp(W / 2 + spread * box.w * 0.34, box.x + w / 2 + 6, box.x + box.w - w / 2 - 6);
-      const y = settled ? box.floor - h - Math.random() * (box.floor - box.y) * 0.5 : -h - Math.random() * 60;
+      const x = clamp(W / 2 + spread * W * 0.34, w / 2 + 4, W - w / 2 - 4);
+      const y = settled ? floorY - h - Math.random() * floorY * 0.4 : -h - Math.random() * 60;
       const body = M.Bodies.rectangle(x, y, w, h, {
-        chamfer: { radius: isCase ? 3 : [w * 0.3, w * 0.3, w * 0.16, w * 0.16] },
-        restitution: 0.18, friction: 0.55, frictionStatic: 0.9, frictionAir: 0.004,
+        chamfer: { radius: isCase ? 3 : [w * 0.3, w * 0.3, w * 0.12, w * 0.12] },
+        restitution: 0.15, friction: 0.6, frictionStatic: 0.9, frictionAir: 0.004,
         density: isCase ? 0.004 : 0.002,
         angle: (Math.random() - 0.5) * (isCase ? 0.4 : 1.6),
       });
       M.Body.setVelocity(body, { x: (Math.random() - 0.5) * 2, y: isFresh ? 4 : 2 });
       M.Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.15);
       items.push({
-        body, w, h, kind: u.kind, days: u.days, shape, tint,
-        glowUntil: isFresh ? performance.now() + 4500 : 0,
+        body, w, h, kind: u.kind, days: u.days, shape, gi, seed: hash,
+        glowUntil: isFresh ? performance.now() + 4000 : 0,
       });
       M.Composite.add(engine.world, body);
     }
 
-    function frame(t) {
+    function frame() {
       if (!running) return;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       if (scene) ctx.drawImage(scene, 0, 0);
       else ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (view === 'liquid') {
+        drawJar(ctx, W, H, floorY, liquidPct);
+        requestAnimationFrame(frame);
+        return;
+      }
+      // contact shadow under the heap
+      if (items.length) {
+        const rg = ctx.createRadialGradient(W / 2, floorY, 0, W / 2, floorY, W * 0.42);
+        rg.addColorStop(0, 'rgba(25,14,4,0.45)');
+        rg.addColorStop(1, 'rgba(25,14,4,0)');
+        ctx.save();
+        ctx.scale(1, 0.12);
+        ctx.fillStyle = rg;
+        ctx.fillRect(0, (floorY - W * 0.42) / 0.12, W, W * 0.84 / 0.12);
+        ctx.restore();
+      }
       const now = performance.now();
-      const shadows = items.length < 90;
+      // shadow pass: one consistent light direction, whatever the bottle's rotation
+      for (const it of items) {
+        const b = it.body;
+        if (b.position.y > H + 400) continue;
+        const lift = clamp((floorY - b.position.y) / H, 0, 1);
+        ctx.save();
+        ctx.globalAlpha = 1 - lift * 0.6;
+        ctx.translate(b.position.x + LIGHT.x * scale * (1 + lift * 2), b.position.y + LIGHT.y * scale * (1 + lift));
+        ctx.rotate(b.angle);
+        drawSprite(ctx, Sprites.shadow(it.kind, it.shape, it.w, it.h, dpr), dpr);
+        ctx.restore();
+      }
       for (const it of items) {
         const b = it.body;
         if (b.position.y > H + 400) continue;
         ctx.save();
         ctx.translate(b.position.x, b.position.y);
         ctx.rotate(b.angle);
-        if (it.kind === 'case') drawCase(ctx, it.w, it.h, it.days.length);
-        else {
-          const glow = it.glowUntil > now ? (it.glowUntil - now) / 4500 : 0;
-          drawBottle(ctx, it.w, it.h, it.shape, it.tint, glow, shadows);
+        const sp = it.kind === 'case' ? Sprites.crate(it.w, it.h, dpr, it.days.length) : Sprites.bottle(it.shape, it.gi, it.w, it.h, dpr, it.seed);
+        if (it.glowUntil > now) {
+          ctx.shadowColor = `rgba(255,214,140,${(it.glowUntil - now) / 4000})`;
+          ctx.shadowBlur = 26;
         }
+        drawSprite(ctx, sp, dpr);
         ctx.restore();
       }
-      if (box) drawGlassFront(ctx, box);
       requestAnimationFrame(frame);
     }
 
@@ -627,8 +879,9 @@
       running = false;
       M.Runner.stop(runner);
     }
+    function setView(v, pct = 0) { view = v; liquidPct = pct; }
     const size = () => ({ W, H });
-    return { init, build, start, stop, size, isBuilt: () => built };
+    return { init, build, start, stop, size, setView, isBuilt: () => built };
   })();
 
   /* =========================================================
@@ -658,17 +911,15 @@
     const s = state.settings;
     $('#dayCount').textContent = int(c.streak);
     $('#dayWord').textContent = plural(c.streak, 'day');
-    $('#subline').textContent = c.streak === 0 ? 'Day one starts now.' : 'Look how far you\'ve come.';
-    $('#captionMain').textContent = `${int(c.bottles)} ${plural(c.bottles, 'bottle')} left behind`;
-    $('#captionSub').textContent = pileView === 'bottles' ? 'A little more freedom. Every day.' : 'Every drop of it, still in the bottle.';
+    $('#subline').textContent = c.streak === 0 ? 'Day one starts now.' : 'One day at a time.';
+    $('#captionMain').textContent = `${int(c.bottles)} ${plural(c.bottles, 'bottle')} you didn't drink`;
     $('#qsMoney').textContent = money(c.money);
     $('#qsVolume').textContent = volumeText(c, c.liters >= 100 ? 0 : 2);
-    $('#basisText').textContent = `Estimated from ${s.sizeMl} mL at $${s.price} a day`;
+    $('#basisText').textContent = `Based on ${s.sizeMl} mL at $${s.price} per bottle`;
     const next = MILESTONES.find(m => m > c.streak) || c.streak + 365;
-    const pct = c.streak / next;
-    $('#msLabel').textContent = `${pct >= 0.85 ? 'Almost at' : pct >= 0.5 ? 'Halfway to' : 'On the way to'} ${milestoneName(next)}`;
-    $('#msCount').textContent = `${int(c.streak)} / ${int(next)}`;
-    $('#msBar').style.width = `${pct * 100}%`;
+    $('#msLabel').textContent = `Next milestone: ${milestoneName(next)}`;
+    $('#msCount').innerHTML = `${int(c.streak)} <span class="muted">/ ${int(next)}</span>`;
+    $('#msBar').style.width = `${(c.streak / next) * 100}%`;
     $('#checkinLabel').textContent = state.journal[c.today] ? 'Update today\'s check-in' : 'Check in for today';
     if (pileView === 'liquid') renderLiquid();
   }
@@ -677,25 +928,10 @@
     const c = calc();
     const next = LIQUIDS.find(l => l.L > c.liters) || LIQUIDS[LIQUIDS.length - 1];
     const pct = clamp(c.liters / next.L, 0, 1);
-    const fillTop = 30 + 150 * (1 - pct);
-    const glass = 'M30 22 h100 q6 0 6 6 l-6 150 q-1 12 -13 12 h-74 q-12 0 -13 -12 l-6 -150 q0 -6 6 -6z';
+    Pile.setView('liquid', pct);
     $('#liquidView').innerHTML = `
-      <svg class="tank" viewBox="0 0 160 200" aria-hidden="true">
-        <defs>
-          <linearGradient id="liq" x1="0" x2="1"><stop offset="0" stop-color="#8f6a26"/><stop offset=".4" stop-color="#e3c27a"/><stop offset="1" stop-color="#7d5b1e"/></linearGradient>
-          <linearGradient id="gl" x1="0" x2="1"><stop offset="0" stop-color="rgba(166,242,198,.18)"/><stop offset=".4" stop-color="rgba(255,255,255,.06)"/><stop offset="1" stop-color="rgba(166,242,198,.14)"/></linearGradient>
-          <clipPath id="tankClip"><path d="${glass}"/></clipPath>
-        </defs>
-        <path d="${glass}" fill="url(#gl)"/>
-        <g clip-path="url(#tankClip)">
-          <rect x="0" y="${fillTop}" width="160" height="200" fill="url(#liq)" opacity=".92"/>
-          <ellipse cx="80" cy="${fillTop}" rx="60" ry="5" fill="#f0d89c" opacity=".8"/>
-        </g>
-        <path d="${glass}" fill="none" stroke="rgba(166,242,198,.55)" stroke-width="2"/>
-        <path d="M40 36 l5 128" stroke="#fff" stroke-opacity=".35" stroke-width="5" stroke-linecap="round"/>
-      </svg>
       <div class="big">${volumeText(c)}</div>
-      <div class="sub">${Math.round(pct * 100)}% of ${next.name} ${next.icon}</div>
+      <div class="sub">${Math.round(pct * 100)}% of ${next.name}</div>
       <div class="liquid-list">${LIQUIDS.map(l => `<span class="${c.liters >= l.L ? 'done' : ''}">${c.liters >= l.L ? '✓ ' : ''}${l.name.replace(/^an? /, '')}</span>`).join('')}</div>`;
   }
 
@@ -703,6 +939,7 @@
     pileView = v;
     $$('.seg button').forEach(b => b.classList.toggle('on', b.dataset.view === v));
     $('#liquidView').hidden = v !== 'liquid';
+    if (v === 'bottles') Pile.setView('bottles');
     renderToday();
   }
 
@@ -724,7 +961,7 @@
       <button class="btn primary block" style="margin-top:12px" data-action="editEntry" data-date="${d.date}">${e ? 'Edit' : 'Write about'} this day</button>`);
     const c = $('#bottleMini').getContext('2d');
     c.translate(46, 94);
-    drawBottle(c, 56, 150, it.shape, it.tint, 0, true);
+    drawBottle(c, 52, 140, it.shape, it.gi);
   }
 
   /* =========================================================
@@ -745,7 +982,7 @@
       <h1 class="page-title">Progress</h1>
       <div class="card hero">
         <div class="big num">${int(c.streak)}</div>
-        <div class="lbl">${plural(c.streak, 'day')} alcohol-free${c.streak !== c.span ? ' this streak' : ''}</div>
+        <div class="lbl">${plural(c.streak, 'day')} sober${c.streak !== c.span ? ' this streak' : ''}</div>
         <div class="meta">
           <div><b class="num">${int(c.bottles)}</b>bottles in pile</div>
           <div><b class="num">${Math.floor(c.span / 7)}</b>weeks</div>
@@ -774,7 +1011,24 @@
       <div class="section-title">Milestones</div>
       <div class="badges">${MILESTONES.map(m => `<div class="badge ${c.streak >= m ? 'got' : m === nextMs ? 'next' : ''}"><b>${m % 365 === 0 ? m / 365 : m}</b><span>${m % 365 === 0 ? plural(m / 365, 'year') : plural(m, 'day')}</span></div>`).join('')}</div>
 
-      <div class="section-title">Keep going</div>
+      <div class="section-title">Your body is healing</div>
+      <div class="card">
+        <div class="timeline">${TIMELINE.map((t, i) => `<div class="tl ${i < nowIdx ? 'done' : i === nowIdx ? 'now' : ''}"><div class="when">${t.when}${i === nowIdx ? ' · you are here' : ''}</div><h3>${t.title}</h3><p>${t.text}</p></div>`).join('')}</div>
+        <p class="note">General information, not medical advice. Everyone heals differently, so check in with a doctor about your own health.</p>
+      </div>`;
+    if (openId) $('#' + openId).open = true;
+  }
+
+  /* =========================================================
+     More screen
+     ========================================================= */
+  function renderMore(openId) {
+    const c = calc();
+    const s = state.settings;
+    const letters = state.letters.slice().sort((a, b) => a.unlockDay - b.unlockDay);
+    const opts = [7, 14, 30, 60, 90, 180, 365, 730, 1095].filter(d => d > c.bottles);
+    $('#screen-more').innerHTML = `
+      <h1 class="page-title">More</h1>
       <details class="group" id="d-letters">
         <summary><span class="ico">✉️</span><span class="t"><b>Letters to future you</b><span>${letters.length ? `${letters.filter(l => c.bottles >= l.unlockDay).length} opened · ${letters.filter(l => c.bottles < l.unlockDay).length} sealed` : 'Seal one now, open it at a milestone'}</span></span></summary>
         <div class="body">
@@ -800,11 +1054,8 @@
         </div>
       </details>
 
-      <div class="section-title">Your body is healing</div>
-      <div class="card">
-        <div class="timeline">${TIMELINE.map((t, i) => `<div class="tl ${i < nowIdx ? 'done' : i === nowIdx ? 'now' : ''}"><div class="when">${t.when}${i === nowIdx ? ' · you are here' : ''}</div><h3>${t.title}</h3><p>${t.text}</p></div>`).join('')}</div>
-        <p class="note">General information, not medical advice. Everyone heals differently, so check in with a doctor about your own health.</p>
-      </div>`;
+      <button class="menu-btn" data-action="settings"><span class="ico">⚙️</span><span class="t"><b>Settings</b><span>Start date, bottle, price, backups</span></span></button>
+      <p class="note" style="text-align:center;margin-top:24px">Sober Pile · one day at a time</p>`;
     if (openId) $('#' + openId).open = true;
   }
 
@@ -852,12 +1103,12 @@
       return { d, pts };
     };
     const m = series('mood'), s = series('sleep');
-    const grid = [1, 2, 3, 4, 5].map(v => `<line x1="${padL}" x2="${W - padR}" y1="${ys(v)}" y2="${ys(v)}" stroke="#2a312e"/><text x="${padL - 6}" y="${ys(v) + 4}" text-anchor="end" font-size="10" fill="#6d7672">${v}</text>`).join('');
-    const lbl = [0, 14, 29].map(i => `<text x="${xs(i)}" y="${H - 4}" text-anchor="${i === 0 ? 'start' : i === 29 ? 'end' : 'middle'}" font-size="10" fill="#6d7672">${fmtDate(addDays(end, i - 29), { month: 'short', day: 'numeric' })}</text>`).join('');
+    const grid = [1, 2, 3, 4, 5].map(v => `<line x1="${padL}" x2="${W - padR}" y1="${ys(v)}" y2="${ys(v)}" stroke="#e2d9ca"/><text x="${padL - 6}" y="${ys(v) + 4}" text-anchor="end" font-size="10" fill="#9a8f82">${v}</text>`).join('');
+    const lbl = [0, 14, 29].map(i => `<text x="${xs(i)}" y="${H - 4}" text-anchor="${i === 0 ? 'start' : i === 29 ? 'end' : 'middle'}" font-size="10" fill="#9a8f82">${fmtDate(addDays(end, i - 29), { month: 'short', day: 'numeric' })}</text>`).join('');
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Mood and sleep over the last 30 days">${grid}${lbl}
-      <path d="${s.d}" fill="none" stroke="#d9b56a" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/><g fill="#d9b56a">${s.pts}</g>
-      <path d="${m.d}" fill="none" stroke="#a6f2c6" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/><g fill="#a6f2c6">${m.pts}</g></svg>
-      <div class="legend"><span><i style="background:#a6f2c6"></i>Mood</span><span><i style="background:#d9b56a"></i>Sleep quality</span></div>`;
+      <path d="${s.d}" fill="none" stroke="#b9792c" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/><g fill="#b9792c">${s.pts}</g>
+      <path d="${m.d}" fill="none" stroke="#5b6a3c" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/><g fill="#5b6a3c">${m.pts}</g></svg>
+      <div class="legend"><span><i style="background:#5b6a3c"></i>Mood</span><span><i style="background:#b9792c"></i>Sleep quality</span></div>`;
   }
 
   function renderJournal() {
@@ -874,7 +1125,7 @@
       <div class="card">${hasData ? chartSVG() : '<div class="empty">Check in daily and you\'ll watch your mood and sleep improve here.</div>'}</div>
       <div class="section-title">Past entries</div>
       <div class="list">${dates.map(entryItem).join('') || '<div class="empty">Past check-ins show up here, and on their bottles in the pile.</div>'}</div>
-      <button class="btn ghost block" style="margin-top:8px;color:var(--mint)" data-action="pickPastDay">+ Add an entry for another day</button>`;
+      <button class="btn ghost block" style="margin-top:8px;color:var(--olive-dark)" data-action="pickPastDay">+ Add an entry for another day</button>`;
   }
 
   function saveEditor(ed) {
@@ -1137,6 +1388,7 @@
     if (tab === 'progress') renderProgress();
     if (tab === 'journal') renderJournal();
     if (tab === 'support') renderSupport();
+    if (tab === 'more') renderMore();
     $(`#screen-${tab}`).scrollTop = 0;
   }
 
@@ -1207,7 +1459,7 @@
       const body = $('#letterBody').value.trim();
       if (!body) { toast('Write something first'); return; }
       state.letters.push({ id: uid(), created: todayStr(), unlockDay: Number($('#letterDay').value), title: $('#letterTitle').value.trim(), body });
-      save(); renderProgress('d-letters'); toast('Sealed. See you there.');
+      save(); renderMore('d-letters'); toast('Sealed. See you there.');
     },
     openLetter: el => {
       const l = state.letters.find(x => x.id === el.dataset.id);
@@ -1222,14 +1474,14 @@
           <button class="btn ghost danger block" style="margin-top:16px" data-action="delLetter" data-id="${l.id}">Delete letter</button>`);
       }
     },
-    delLetter: el => { if (!confirm('Delete this letter?')) return; state.letters = state.letters.filter(l => l.id !== el.dataset.id); save(); closeSheet(); renderProgress('d-letters'); },
+    delLetter: el => { if (!confirm('Delete this letter?')) return; state.letters = state.letters.filter(l => l.id !== el.dataset.id); save(); closeSheet(); renderMore('d-letters'); },
     addWin: () => {
       const v = $('#winText').value.trim();
       if (!v) return;
       state.wins.push({ ts: Date.now(), text: v });
-      save(); renderProgress('d-wins'); toast('Nice. That\'s time well spent.');
+      save(); renderMore('d-wins'); toast('Nice. That\'s time well spent.');
     },
-    delWin: el => { state.wins.splice(Number(el.dataset.i), 1); save(); renderProgress('d-wins'); },
+    delWin: el => { state.wins.splice(Number(el.dataset.i), 1); save(); renderMore('d-wins'); },
     addSlip: () => {
       const d = $('#slipDate').value;
       if (!d || state.slips.includes(d)) return;
