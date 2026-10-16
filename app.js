@@ -4,7 +4,7 @@
   /* =========================================================
      State
      ========================================================= */
-  const APP_VERSION = '1.18';
+  const APP_VERSION = '1.19';
   const STORE_KEY = 'soberpile.v1';
   const DEFAULT_STATE = {
     settings: {
@@ -239,22 +239,24 @@
     tall: { neckW: 0.26, neckH: 0.36, shoulder: 0.2, r: 0.12, square: false, dims: [0.86, 1.12] },
   };
   const SHAPE_KEYS = Object.keys(BOTTLE_SHAPES);
-  const LIGHT = { x: 3, y: 8 };  // shadow offset: warm bar lamps behind and above
+  const LIGHT = { x: 9, y: 7 };  // shadow offset: sunlight from the upper left
 
-  // Bar photo behind the pile. The bottles rest on the wooden counter in the foreground,
-  // BAR_EDGE of the way down the photo.
+  // Photo behind the pile: a sunlit plaster wall over a rough stone ledge.
+  // The bottles rest on the ledge, BAR_EDGE of the way down the photo.
   const BAR = new Image();
-  BAR.src = 'assets/bar.jpg';
-  const BAR_EDGE = 0.79;
+  BAR.src = 'assets/wall.jpg';
+  const BAR_EDGE = 0.87;
   const barReady = () => BAR.complete && BAR.naturalWidth > 0;
-  // cover the stage so the counter line lands on the floor line
-  function drawBar(c, W, H, fy) {
+  // cover the stage, bottom-aligned so the ledge always shows; returns where the ledge top lands
+  function barLayout(W, H) {
     const iw = BAR.naturalWidth, ih = BAR.naturalHeight;
-    const s = Math.max(W / iw, fy / (BAR_EDGE * ih), H / ih);
-    const dw = iw * s, dh = ih * s;
-    let y = fy - BAR_EDGE * ih * s;
-    y = Math.min(0, Math.max(y, H - dh));
-    c.drawImage(BAR, (W - dw) / 2, y, dw, dh);
+    const s = Math.max(W / iw, H / ih);
+    const dw = iw * s, dh = ih * s, y = H - dh;
+    return { x: (W - dw) / 2, y, dw, dh, floor: Math.round(y + BAR_EDGE * dh) };
+  }
+  function drawBar(c, W, H) {
+    const L = barLayout(W, H);
+    c.drawImage(BAR, L.x, L.y, L.dw, L.dh);
   }
 
   // Photographic whiskey bottle used for every bottle in the pile (falls back to drawn bottles).
@@ -905,7 +907,8 @@
      ========================================================= */
   const Pile = (() => {
     const M = window.Matter;
-    const BASE_W = 38, BASE_H = 100, MAX_LOOSE = 300, CASE_SIZE = 12, FLOOR = 0.8, SCALE = 1.25;
+    const BASE_W = 38, BASE_H = 100, MAX_LOOSE = 300, CASE_SIZE = 12, SCALE = 1.25;
+    let FLOOR = 0.8;
     let engine, runner, canvas, ctx, mouse, W = 0, H = 0, floorY = 0, dpr = 1, walls = [], items = [], gen = 0;
     let running = false, lastClink = 0, scale = SCALE, built = false, down = null, view = 'bottles', liquid = null, liquidCv = null, liquidKey = '';
     let wallCv = null, ledgeCv = null, vigCv = null;
@@ -980,7 +983,9 @@
       const r = canvas.getBoundingClientRect();
       dpr = Math.min(window.devicePixelRatio || 1, 2.5);
       W = r.width; H = r.height;
-      floorY = Math.round(H * FLOOR);
+      floorY = Math.round(H * 0.8);
+      if (barReady() && W > 10 && H > 10) floorY = barLayout(W, H).floor;
+      FLOOR = floorY / Math.max(H, 1);
       canvas.width = Math.round(W * dpr);
       canvas.height = Math.round(H * dpr);
       canvas.pixelRatio = dpr;
@@ -988,7 +993,7 @@
       if (W > 10 && H > 10) {
         if (barReady()) {
           // the photo already has its counter and vignette
-          wallCv = offscreen(W, H, c => drawBar(c, W, H, floorY));
+          wallCv = offscreen(W, H, c => drawBar(c, W, H));
           ledgeCv = null;
           vigCv = null;
         } else {
