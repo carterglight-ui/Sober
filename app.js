@@ -4,7 +4,7 @@
   /* =========================================================
      State
      ========================================================= */
-  const APP_VERSION = '1.21';
+  const APP_VERSION = '1.22';
   const STORE_KEY = 'soberpile.v1';
   const DEFAULT_STATE = {
     settings: {
@@ -128,11 +128,11 @@
     // art: a photo of the container. clear = see-through, so whiskey is drawn inside `poly`
     // (normalised to the image, liquid from `bottom` up to `top`); otherwise a fill line is drawn on it.
     // full/empty: photos of the same container, full and empty. The full one shows below the waterline.
-    { id: 'shot', one: 'shot', many: 'shots', L: SHOT_L, note: '1.5 oz', art: { src: 'assets/c-shot-empty.png', full: 'assets/c-shot-full.png', top: 0.22, bottom: 0.77 } },
-    { id: 'soda', one: '2-liter soda', many: '2-liter sodas', L: 2, art: { src: 'assets/c-soda-empty.png', full: 'assets/c-soda-full.png', top: 0.136, bottom: 0.99 } },
-    { id: 'jug', one: 'gallon jug', many: 'gallon jugs', L: GAL, art: { src: 'assets/c-jug-empty.png', full: 'assets/c-jug-full.png', top: 0.153, bottom: 0.99 } },
-    { id: 'keg', one: 'beer keg', many: 'beer kegs', L: 15.5 * GAL, note: '15.5 gallon', art: { src: 'assets/c-keg.png', clear: false, top: 0.12, bottom: 0.95 } },
-    { id: 'drum', one: 'oil drum', many: 'oil drums', L: 55 * GAL, note: '55 gallon', art: { src: 'assets/c-drum.png', clear: false, top: 0.1, bottom: 0.97 } },
+    { id: 'shot', one: 'shot', many: 'shots', L: SHOT_L, note: '1.5 oz', group: 100, art: { src: 'assets/c-shot-empty.png', full: 'assets/c-shot-full.png', top: 0.22, bottom: 0.77 } },
+    { id: 'soda', one: '2-liter soda', many: '2-liter sodas', L: 2, group: 5, art: { src: 'assets/c-soda-empty.png', full: 'assets/c-soda-full.png', top: 0.136, bottom: 0.99 } },
+    { id: 'jug', one: 'gallon jug', many: 'gallon jugs', L: GAL, group: 5, art: { src: 'assets/c-jug-empty.png', full: 'assets/c-jug-full.png', top: 0.153, bottom: 0.99 } },
+    { id: 'keg', one: 'beer keg', many: 'beer kegs', L: 15.5 * GAL, note: '15.5 gallon', group: 5, art: { src: 'assets/c-keg.png', clear: false, top: 0.12, bottom: 0.95 } },
+    { id: 'drum', one: 'oil drum', many: 'oil drums', L: 55 * GAL, note: '55 gallon', group: 5, art: { src: 'assets/c-drum.png', clear: false, top: 0.1, bottom: 0.97 } },
     // liquid: just the whiskey from the full photo, laid over the dry basin and drawn down as it empties
     { id: 'hottub', one: 'hot tub', many: 'hot tubs', L: 500 * GAL, note: '500 gallon', art: { src: 'assets/c-hottub-empty.png', liquid: 'assets/c-hottub-liquid.png' } },
     {
@@ -814,10 +814,38 @@
   }
 
   // Lay out as many containers as the whiskey fills, last one partly full, stacked on the ledge.
-  function drawContainers(c, W, H, fy, img, art, ratio) {
-    const n = ratio >= 1 ? Math.ceil(ratio - 1e-9) : 1;
-    const shown = Math.min(n, 1500);
-    const lastFrac = ratio >= 1 ? (ratio - Math.floor(ratio + 1e-9)) || 1 : ratio;
+  // "100x" style tag in the bottom-right corner of a grouped container
+  function drawGroupTag(c, x, y, w, h, n) {
+    const fs = Math.max(9, Math.min(h * 0.16, w * 0.3));
+    c.save();
+    c.shadowColor = 'transparent';
+    c.font = `700 ${fs}px "Source Sans 3", -apple-system, sans-serif`;
+    const label = `${n}x`, tw = c.measureText(label).width, px = fs * 0.4, ph = fs * 1.25;
+    const bx = x + w - tw - px * 2 + fs * 0.15, by = y + h - ph - h * 0.02;
+    c.fillStyle = 'rgba(245,238,226,0.94)';
+    roundRect(c, bx, by, tw + px * 2, ph, ph / 2);
+    c.fill();
+    c.strokeStyle = 'rgba(42,31,23,0.35)';
+    c.lineWidth = 1;
+    c.stroke();
+    c.fillStyle = '#2a1f17';
+    c.textAlign = 'left';
+    c.textBaseline = 'middle';
+    c.fillText(label, bx + px, by + ph / 2 + 0.5);
+    c.restore();
+  }
+
+  // Lay out as many containers as the whiskey fills, last one partly full, stacked on the ledge.
+  // With `group`, every `group` full containers collapse into one tagged "<group>x".
+  function drawContainers(c, W, H, fy, img, art, ratio, group) {
+    const whole = Math.floor(ratio + 1e-9);
+    const part = ratio - whole > 1e-6 ? ratio - whole : 0;
+    const units = [];
+    const groups = group ? Math.floor(whole / group) : 0;
+    for (let i = 0; i < groups; i++) units.push({ frac: 1, tag: group });
+    for (let i = 0; i < whole - groups * (group || 0); i++) units.push({ frac: 1 });
+    if (part || !units.length) units.push({ frac: part || ratio });
+    const shown = Math.min(units.length, 1500);
     const aspect = img.naturalWidth / img.naturalHeight;
     const areaW = W * 0.9, areaH = fy - H * 0.38, gapK = 0.06;
     let best = { h: 0, rows: 1, cols: 1 };
@@ -840,7 +868,8 @@
       const y = fy - (r + 1) * h;
       for (let k = 0; k < inRow; k++, i++) {
         const x = W / 2 - rowW / 2 + k * (w + gap);
-        drawContainer(c, img, art, x, y, w, h, i === shown - 1 ? lastFrac : 1);
+        drawContainer(c, img, art, x, y, w, h, units[i].frac);
+        if (units[i].tag) drawGroupTag(c, x, y, w, h, units[i].tag);
       }
     }
     c.restore();
@@ -1296,7 +1325,7 @@
       const key = [pick.id, ratio.toFixed(4), W, H, dpr, !!img, !!extra].join('|');
       if (key !== liquidKey) {
         liquidCv = offscreen(W, H, c => {
-          if (img) drawContainers(c, W, H, floorY, img, pick.art, ratio);
+          if (img) drawContainers(c, W, H, floorY, img, pick.art, ratio, pick.group);
           else drawJar(c, W, H, floorY, Math.min(1, ratio));
         });
         liquidKey = key;
