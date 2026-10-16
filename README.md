@@ -3,7 +3,7 @@
 Every sober day drops a bottle on the pile. A phone web app (PWA) that shows the whiskey you didn't drink, plus tools for staying sober.
 
 ## Features
-- **Today**: one realistic whiskey bottle per sober day drops onto a stone ledge against a sunlit plaster wall. Each bottle variant is pre-rendered once (amber glass, aged label, brass or cork cap) so the physics stays smooth. Tap a bottle to see that day's journal entry; drag to toss. After 140 bottles, older ones pack into cases of 12. Money saved, alcohol avoided and the next milestone sit underneath.
+- **Today**: one realistic whiskey bottle per sober day drops onto a stone ledge against a sunlit plaster wall. Bottles use a photo (`assets/bottle.png`) with a compound physics outline (body, shoulders, neck) so they stack the way real bottles do. Tap a bottle to see that day's journal entry; drag to toss. After 140 bottles, older ones pack into cases of 12. Money saved, alcohol avoided and the next milestone sit underneath.
 - **Liquid view**: the same total as whiskey in a glass jar on the ledge, compared to a pot, bucket, keg, bathtub, oil drum and hot tub.
 - **More**: letters to future you, time reclaimed and settings.
 - **Progress**: streak, money, gallons, standard drinks, calories, hours reclaimed, savings goal, milestone badges, a body-recovery timeline, and progress toward the ~1,095 bottles from the drinking years.

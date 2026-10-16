@@ -196,6 +196,12 @@
   const SHAPE_KEYS = Object.keys(BOTTLE_SHAPES);
   const LIGHT = { x: 9, y: 7 };  // shadow offset: sunlight from the upper left
 
+  // Photographic whiskey bottle used for every bottle in the pile (falls back to drawn bottles).
+  const PHOTO = new Image();
+  PHOTO.src = 'assets/bottle.png';
+  const PHOTO_RATIO = 171 / 440;
+  const photoReady = () => PHOTO.complete && PHOTO.naturalWidth > 0;
+
   function roundRect(c, x, y, w, h, r) {
     r = Math.max(0, Math.min(r, w / 2, h / 2));
     c.beginPath();
@@ -465,7 +471,6 @@
       c.shadowOffsetX = OFF * dpr;
       c.fillStyle = '#000';
       pathFn(c);
-      c.fill();
       return cv;
     }
     return {
@@ -480,11 +485,19 @@
         if (!cache.has(k)) cache.set(k, make(w, h, dpr, c => paintCrate(c, w, h, count, 5)));
         return cache.get(k);
       },
+      photo(w, h, dpr) {
+        const k = key('p', Math.round(w), Math.round(h), dpr);
+        if (!cache.has(k)) cache.set(k, make(w, h, dpr, c => { c.imageSmoothingQuality = 'high'; c.drawImage(PHOTO, -w / 2, -h / 2, w, h); }));
+        return cache.get(k);
+      },
       shadow(kind, shape, w, h, dpr) {
         const k = key('s', kind, shape, Math.round(w), Math.round(h), dpr);
         if (!cache.has(k)) {
           const blur = Math.max(4, w * 0.25);
-          cache.set(k, shadow(w, h, dpr, c => kind === 'case' ? roundRect(c, -w / 2, -h / 2, w, h, 3) : bottlePath(c, w, h, BOTTLE_SHAPES[shape]), blur));
+          cache.set(k, shadow(w, h, dpr, c => {
+            if (kind === 'photo') c.drawImage(PHOTO, -w / 2, -h / 2, w, h);
+            else { if (kind === 'case') roundRect(c, -w / 2, -h / 2, w, h, 3); else bottlePath(c, w, h, BOTTLE_SHAPES[shape]); c.fill(); }
+          }, blur));
         }
         return cache.get(k);
       },
@@ -497,7 +510,10 @@
 
   // A single bottle for the info sheet
   function drawBottle(c, w, h, shape, gi) {
-    paintBottle(c, w, h, shape, gi, 1);
+    if (photoReady()) {
+      const pw = h * PHOTO_RATIO;
+      c.drawImage(PHOTO, -pw / 2, -h / 2, pw, h);
+    } else paintBottle(c, w, h, shape, gi, 1);
   }
 
   // Sunlit plaster wall and a rough stone ledge.
@@ -772,7 +788,7 @@
 
       const unitArea = u => u.kind === 'case' ? 3.4 * 0.62 : 1;
       const totalArea = units.reduce((a, u) => a + unitArea(u), 0) * BASE_W * BASE_H;
-      scale = totalArea ? clamp(Math.sqrt((0.36 * W * floorY) / totalArea), 0.24, 1.2) : 1;
+      scale = totalArea ? clamp(Math.sqrt((0.36 * W * floorY) / totalArea), 0.24, 1.5) : 1;
 
       const old = units.filter(u => !u.days.some(d => d.isNew));
       const fresh = units.filter(u => u.days.some(d => d.isNew));
@@ -802,23 +818,35 @@
       const roll = (hash >>> 5) % 10;
       const gi = roll < 7 ? roll % 3 : roll === 7 || roll === 8 ? 3 : 4;
       if (gi === 3 && shape === 'square') shape = 'tall';
-      const [dw, dh] = isCase ? [3.4, 0.62] : BOTTLE_SHAPES[shape].dims;
+      const kind = isCase ? 'case' : photoReady() ? 'photo' : 'bottle';
+      const [dw, dh] = isCase ? [3.4, 0.62] : kind === 'photo' ? [(1.05 * BASE_H * PHOTO_RATIO) / BASE_W, 1.05] : BOTTLE_SHAPES[shape].dims;
       const w = BASE_W * dw * scale;
       const h = BASE_H * dh * scale;
       // bias drops toward the middle so the bottles heap into a mound
       const spread = (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
       const x = clamp(W / 2 + spread * W * 0.34, w / 2 + 4, W - w / 2 - 4);
       const y = settled ? floorY - h - Math.random() * floorY * 0.4 : -h - Math.random() * 60;
-      const body = M.Bodies.rectangle(x, y, w, h, {
-        chamfer: { radius: isCase ? 3 : [w * 0.3, w * 0.3, w * 0.12, w * 0.12] },
-        restitution: 0.15, friction: 0.6, frictionStatic: 0.9, frictionAir: 0.004,
-        density: isCase ? 0.004 : 0.002,
-        angle: (Math.random() - 0.5) * (isCase ? 0.4 : 1.6),
-      });
+      const opts = { restitution: 0.15, friction: 0.6, frictionStatic: 0.9, frictionAir: 0.004, density: isCase ? 0.004 : 0.002 };
+      let body, off = { x: 0, y: 0 };
+      if (kind === 'photo') {
+        // compound outline that follows the photo: square body, shoulders, neck
+        body = M.Body.create({
+          ...opts,
+          parts: [
+            M.Bodies.rectangle(x, y + h * 0.17, w * 0.97, h * 0.66, { chamfer: { radius: w * 0.1 } }),
+            M.Bodies.rectangle(x, y - h * 0.16, w * 0.62, h * 0.07),
+            M.Bodies.rectangle(x, y - h * 0.34, w * 0.42, h * 0.3, { chamfer: { radius: w * 0.06 } }),
+          ],
+        });
+        off = { x: x - body.position.x, y: y - body.position.y };
+      } else {
+        body = M.Bodies.rectangle(x, y, w, h, { ...opts, chamfer: { radius: isCase ? 3 : [w * 0.3, w * 0.3, w * 0.12, w * 0.12] } });
+      }
+      M.Body.setAngle(body, (Math.random() - 0.5) * (isCase ? 0.4 : 1.6));
       M.Body.setVelocity(body, { x: (Math.random() - 0.5) * 2, y: isFresh ? 4 : 2 });
       M.Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.15);
       items.push({
-        body, w, h, kind: u.kind, days: u.days, shape, gi, seed: hash,
+        body, w, h, kind, off, days: u.days, shape, gi, seed: hash,
         glowUntil: isFresh ? performance.now() + 4000 : 0,
       });
       M.Composite.add(engine.world, body);
@@ -856,6 +884,7 @@
         ctx.globalAlpha = 1 - lift * 0.6;
         ctx.translate(b.position.x + LIGHT.x * scale * (1 + lift * 2), b.position.y + LIGHT.y * scale * (1 + lift));
         ctx.rotate(b.angle);
+        ctx.translate(it.off.x, it.off.y);
         drawSprite(ctx, Sprites.shadow(it.kind, it.shape, it.w, it.h, dpr), dpr);
         ctx.restore();
       }
@@ -865,7 +894,10 @@
         ctx.save();
         ctx.translate(b.position.x, b.position.y);
         ctx.rotate(b.angle);
-        const sp = it.kind === 'case' ? Sprites.crate(it.w, it.h, dpr, it.days.length) : Sprites.bottle(it.shape, it.gi, it.w, it.h, dpr, it.seed);
+        ctx.translate(it.off.x, it.off.y);
+        const sp = it.kind === 'case' ? Sprites.crate(it.w, it.h, dpr, it.days.length)
+          : it.kind === 'photo' ? Sprites.photo(it.w, it.h, dpr)
+          : Sprites.bottle(it.shape, it.gi, it.w, it.h, dpr, it.seed);
         if (it.glowUntil > now) {
           ctx.shadowColor = `rgba(255,214,140,${(it.glowUntil - now) / 4000})`;
           ctx.shadowBlur = 26;
@@ -1579,8 +1611,15 @@
   /* =========================================================
      Boot
      ========================================================= */
-  Pile.init($('#pileCanvas'));
-  showTab('today');
+  let booted = false;
+  function boot() {
+    if (booted) return;
+    booted = true;
+    Pile.init($('#pileCanvas'));
+    showTab('today');
+  }
+  if (photoReady()) boot();
+  else { PHOTO.onload = boot; PHOTO.onerror = boot; setTimeout(boot, 2500); }
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').catch(() => {});
